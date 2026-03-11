@@ -1,0 +1,14 @@
+{
+  "name": "hello-db",
+  "version": "1.0.0",
+  "description": "Phase 1 + Phase 2 hello-db app for EC2",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "express": "^4.21.2",
+    "mysql2": "^3.11.5"
+  }
+}

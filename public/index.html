@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>hello-db</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header>
+    <div class="header-inner">
+      <h1>&#127946; hello-db</h1>
+      <p class="subtitle">Swim Management System &mdash; User Database</p>
+      <span id="db-status" class="badge loading">Connecting&hellip;</span>
+    </div>
+  </header>
+
+  <main>
+    <!-- Phase 1 – retrieve and display dummy records -->
+    <section class="card">
+      <div class="card-header">
+        <h2>Users in Database</h2>
+        <button class="btn btn-secondary" id="btn-refresh">&#8635; Refresh</button>
+      </div>
+
+      <div id="users-loading" class="state-msg">Loading records&hellip;</div>
+      <div id="users-error" class="state-msg error hidden"></div>
+      <div id="users-empty" class="state-msg hidden">No users found. Add one below.</div>
+
+      <div class="table-wrap">
+        <table id="users-table" class="hidden">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Name</th>
+              <th>Email</th>
+              <th>Created</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody id="users-tbody"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- Phase 2 – add user -->
+    <section class="card">
+      <h2>Add User</h2>
+      <form id="add-user-form" autocomplete="off">
+        <div class="form-row">
+          <label for="input-name">Name</label>
+          <input id="input-name" type="text" placeholder="Full name" required />
+        </div>
+        <div class="form-row">
+          <label for="input-email">Email</label>
+          <input id="input-email" type="email" placeholder="email@example.com" required />
+        </div>
+        <div id="form-error" class="state-msg error hidden"></div>
+        <button class="btn btn-primary" type="submit" id="btn-add">Add User</button>
+      </form>
+    </section>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>
