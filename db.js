@@ -40,11 +40,6 @@ async function ensureUsersTable(admin) {
 }
 
 async function seedUsers(admin) {
-  const [rows] = await admin.query("SELECT COUNT(*) AS count FROM users");
-  if (rows[0].count > 0) {
-    return;
-  }
-
   const demoUsers = [
     { name: "Alex Admin", email: "admin@swimsync.com", password: "Admin123!", role: "admin" },
     { name: "Casey Coach", email: "coach@swimsync.com", password: "Coach123!", role: "coach" },
@@ -55,7 +50,12 @@ async function seedUsers(admin) {
   for (const user of demoUsers) {
     const passwordHash = await bcrypt.hash(user.password, 10);
     await admin.query(
-      `INSERT INTO users (name, email, password_hash, role) VALUES (?, ?, ?, ?)`,
+      `INSERT INTO users (name, email, password_hash, role)
+       VALUES (?, ?, ?, ?)
+       ON DUPLICATE KEY UPDATE
+         name = VALUES(name),
+         password_hash = VALUES(password_hash),
+         role = VALUES(role)`,
       [user.name, user.email, passwordHash, user.role]
     );
   }
