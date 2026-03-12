@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SwimSync &mdash; Team</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header>
+    <div class="header-inner">
+      <div class="header-top-row">
+        <div>
+          <h1>&#127946; SwimSync</h1>
+          <p class="subtitle">Team Information</p>
+        </div>
+        <button class="btn btn-secondary" id="btn-logout" type="button">Log Out</button>
+      </div>
+      <div class="header-meta-row">
+        <span id="db-status" class="badge loading">Connecting&hellip;</span>
+        <span id="user-role-badge" class="badge role-badge hidden"></span>
+      </div>
+    </div>
+  </header>
+
+  <nav class="site-nav">
+    <div class="site-nav-inner">
+      <a href="/app" class="nav-link">&#127968; Dashboard</a>
+      <a href="/schedule" class="nav-link">&#128197; Schedule</a>
+      <a href="/team" class="nav-link active">&#128101; Team</a>
+    </div>
+  </nav>
+
+  <main>
+    <div id="team-loading" class="state-msg">Loading team data&hellip;</div>
+    <div id="team-error" class="state-msg error hidden"></div>
+
+    <!-- Coaches -->
+    <section class="card hidden" id="coaches-card">
+      <div class="card-header">
+        <h2>&#127955; Coaches</h2>
+        <span id="coaches-count" class="badge loading">0</span>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>Email</th>
+              <th>Certification</th>
+              <th>Years Exp.</th>
+            </tr>
+          </thead>
+          <tbody id="coaches-tbody"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- Swimmers -->
+    <section class="card hidden" id="swimmers-card">
+      <div class="card-header">
+        <h2>&#127946; Swimmers</h2>
+        <span id="swimmers-count" class="badge loading">0</span>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>Email</th>
+              <th>DOB</th>
+              <th>Gender</th>
+              <th>Skill Level</th>
+            </tr>
+          </thead>
+          <tbody id="swimmers-tbody"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- Parents -->
+    <section class="card hidden" id="parents-card">
+      <div class="card-header">
+        <h2>&#128106; Parents / Guardians</h2>
+        <span id="parents-count" class="badge loading">0</span>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>Email</th>
+              <th>Phone</th>
+              <th>Emergency Contact</th>
+            </tr>
+          </thead>
+          <tbody id="parents-tbody"></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <script src="team.js"></script>
+</body>
+</html>

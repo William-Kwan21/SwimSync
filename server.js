@@ -226,6 +226,149 @@ app.delete("/api/users/:id", authenticate, requireRole("admin"), async (req, res
   }
 });
 
+/* ── page routes ── */
+app.get("/schedule", (_req, res) => {
+  res.sendFile(path.join(__dirname, "public", "schedule.html"));
+});
+
+app.get("/team", (_req, res) => {
+  res.sendFile(path.join(__dirname, "public", "team.html"));
+});
+
+/* ── practice groups ── */
+app.get("/api/practice-groups", authenticate, async (_req, res) => {
+  try {
+    const [rows] = await pool.query(
+      `SELECT pg.id, pg.group_name, pg.level,
+              u.name AS coach_name
+       FROM practice_groups pg
+       LEFT JOIN coaches c ON pg.coach_id = c.id
+       LEFT JOIN users u ON c.user_id = u.id
+       ORDER BY pg.group_name ASC`
+    );
+    return res.json(rows);
+  } catch (error) {
+    return res.status(500).json({ message: "Failed to fetch practice groups", error: error.message });
+  }
+});
+
+app.post("/api/practice-groups", authenticate, requireRole("admin", "coach"), async (req, res) => {
+  const { group_name, level } = req.body;
+  if (!group_name) {
+    return res.status(400).json({ message: "group_name is required" });
+  }
+
+  let coachId = null;
+  if (req.user.role === "coach") {
+    const [rows] = await pool.query("SELECT id FROM coaches WHERE user_id = ? LIMIT 1", [req.user.sub]);
+    if (rows.length) coachId = rows[0].id;
+  }
+
+  try {
+    const [result] = await pool.query(
+      "INSERT INTO practice_groups (group_name, level, coach_id) VALUES (?, ?, ?)",
+      [group_name.trim(), level || null, coachId]
+    );
+    const [rows] = await pool.query(
+      `SELECT pg.id, pg.group_name, pg.level, u.name AS coach_name
+       FROM practice_groups pg
+       LEFT JOIN coaches c ON pg.coach_id = c.id
+       LEFT JOIN users u ON c.user_id = u.id
+       WHERE pg.id = ?`,
+      [result.insertId]
+    );
+    return res.status(201).json(rows[0]);
+  } catch (error) {
+    return res.status(500).json({ message: "Failed to create group", error: error.message });
+  }
+});
+
+/* ── practice schedule ── */
+app.get("/api/schedule", authenticate, async (_req, res) => {
+  try {
+    const [rows] = await pool.query(
+      `SELECT ps.id, ps.practice_date, ps.start_time, ps.end_time, ps.location,
+              pg.group_name, pg.level
+       FROM practice_schedule ps
+       JOIN practice_groups pg ON ps.group_id = pg.id
+       ORDER BY ps.practice_date DESC, ps.start_time ASC`
+    );
+    return res.json(rows);
+  } catch (error) {
+    return res.status(500).json({ message: "Failed to fetch schedule", error: error.message });
+  }
+});
+
+app.post("/api/schedule", authenticate, requireRole("admin", "coach"), async (req, res) => {
+  const { group_id, practice_date, start_time, end_time, location } = req.body;
+
+  if (!group_id || !practice_date || !start_time || !end_time) {
+    return res.status(400).json({ message: "group_id, practice_date, start_time, and end_time are required" });
+  }
+
+  try {
+    const [result] = await pool.query(
+      "INSERT INTO practice_schedule (group_id, practice_date, start_time, end_time, location) VALUES (?, ?, ?, ?, ?)",
+      [group_id, practice_date, start_time, end_time, location || null]
+    );
+
+    const [rows] = await pool.query(
+      `SELECT ps.id, ps.practice_date, ps.start_time, ps.end_time, ps.location,
+              pg.group_name, pg.level
+       FROM practice_schedule ps
+       JOIN practice_groups pg ON ps.group_id = pg.id
+       WHERE ps.id = ?`,
+      [result.insertId]
+    );
+    return res.status(201).json(rows[0]);
+  } catch (error) {
+    return res.status(500).json({ message: "Failed to create session", error: error.message });
+  }
+});
+
+app.delete("/api/schedule/:id", authenticate, requireRole("admin", "coach"), async (req, res) => {
+  const id = Number(req.params.id);
+  if (Number.isNaN(id)) {
+    return res.status(400).json({ message: "Invalid id" });
+  }
+  try {
+    const [result] = await pool.query("DELETE FROM practice_schedule WHERE id = ?", [id]);
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ message: "Session not found" });
+    }
+    return res.status(204).send();
+  } catch (error) {
+    return res.status(500).json({ message: "Failed to delete session", error: error.message });
+  }
+});
+
+/* ── team roster ── */
+app.get("/api/team", authenticate, async (_req, res) => {
+  try {
+    const [coaches] = await pool.query(
+      `SELECT u.id, u.name, u.email, c.certification, c.years_experience
+       FROM coaches c
+       JOIN users u ON c.user_id = u.id
+       ORDER BY u.name ASC`
+    );
+    const [swimmers] = await pool.query(
+      `SELECT u.id, u.name, u.email, s.date_of_birth, s.gender, s.skill_level
+       FROM swimmers s
+       JOIN users u ON s.user_id = u.id
+       ORDER BY u.name ASC`
+    );
+    const [parents] = await pool.query(
+      `SELECT u.id, u.name, u.email, p.phone, p.emergency_contact
+       FROM parents p
+       JOIN users u ON p.user_id = u.id
+       ORDER BY u.name ASC`
+    );
+    return res.json({ coaches, swimmers, parents });
+  } catch (error) {
+    return res.status(500).json({ message: "Failed to fetch team", error: error.message });
+  }
+});
+
 /* ── catch-all: unknown routes return JSON instead of Express HTML 404 ── */
 app.use((req, res) => {
   res.status(404).json({

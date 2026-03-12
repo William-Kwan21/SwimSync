@@ -295,6 +295,99 @@ select:focus {
   margin-top: 0.35rem;
 }
 
+/* ── site nav ── */
+.site-nav {
+  background: #0d3f8f;
+  padding: 0 1.5rem;
+  position: sticky;
+  top: 0;
+  z-index: 50;
+}
+
+.site-nav-inner {
+  max-width: 860px;
+  margin: 0 auto;
+  display: flex;
+  gap: 0.25rem;
+}
+
+.nav-link {
+  color: rgba(255, 255, 255, 0.72);
+  padding: 0.65rem 1.05rem;
+  text-decoration: none;
+  font-size: 0.875rem;
+  font-weight: 600;
+  border-bottom: 3px solid transparent;
+  transition: color .15s, border-bottom-color .15s;
+  display: inline-block;
+}
+
+.nav-link:hover,
+.nav-link.active {
+  color: #fff;
+  border-bottom-color: #fff;
+}
+
+/* ── card header (title + action on same row) ── */
+.card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 0.75rem;
+}
+
+.card-header h2 {
+  margin: 0;
+}
+
+/* ── form grid (multi-column form layout) ── */
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 0 1.25rem;
+}
+
+.form-row-full {
+  grid-column: 1 / -1;
+}
+
+/* ── date / time inputs ── */
+input[type="date"],
+input[type="time"] {
+  padding: 0.55rem 0.8rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 0.9rem;
+  color: var(--text);
+  width: 100%;
+  transition: border-color .15s;
+}
+
+input[type="date"]:focus,
+input[type="time"]:focus {
+  outline: none;
+  border-color: var(--blue);
+  box-shadow: 0 0 0 3px rgba(26,110,219,.15);
+}
+
+/* ── table wrapper (horizontal scroll on small screens) ── */
+.table-wrap {
+  overflow-x: auto;
+}
+
+/* ── state message ── */
+.state-msg {
+  padding: 0.75rem 0.25rem;
+  font-size: 0.9rem;
+  color: var(--muted);
+}
+
+.state-msg.error {
+  color: var(--red, #dc2626);
+  font-weight: 600;
+}
+
 /* ── responsive ── */
 @media (max-width: 520px) {
   .header-top-row,
@@ -306,4 +399,9 @@ select:focus {
   }
 
   th:nth-child(5), td:nth-child(5) { display: none; }
+
+  .site-nav-inner { gap: 0; }
+  .nav-link { font-size: 0.78rem; padding: 0.55rem 0.6rem; }
+
+  .form-grid { grid-template-columns: 1fr; }
 }

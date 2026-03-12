@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SwimSync &mdash; Practice Schedule</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header>
+    <div class="header-inner">
+      <div class="header-top-row">
+        <div>
+          <h1>&#127946; SwimSync</h1>
+          <p class="subtitle">Practice Schedule</p>
+        </div>
+        <button class="btn btn-secondary" id="btn-logout" type="button">Log Out</button>
+      </div>
+      <div class="header-meta-row">
+        <span id="db-status" class="badge loading">Connecting&hellip;</span>
+        <span id="user-role-badge" class="badge role-badge hidden"></span>
+      </div>
+    </div>
+  </header>
+
+  <nav class="site-nav">
+    <div class="site-nav-inner">
+      <a href="/app" class="nav-link">&#127968; Dashboard</a>
+      <a href="/schedule" class="nav-link active">&#128197; Schedule</a>
+      <a href="/team" class="nav-link">&#128101; Team</a>
+    </div>
+  </nav>
+
+  <main>
+    <!-- Schedule table -->
+    <section class="card">
+      <div class="card-header">
+        <h2>Upcoming Practice Sessions</h2>
+        <button class="btn btn-secondary" id="btn-refresh">&#8635; Refresh</button>
+      </div>
+      <div id="schedule-loading" class="state-msg">Loading schedule&hellip;</div>
+      <div id="schedule-error" class="state-msg error hidden"></div>
+      <div id="schedule-empty" class="state-msg hidden">No sessions scheduled yet.</div>
+      <div class="table-wrap">
+        <table id="schedule-table" class="hidden">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Date</th>
+              <th>Group</th>
+              <th>Level</th>
+              <th>Start</th>
+              <th>End</th>
+              <th>Location</th>
+              <th id="sched-action-heading">Action</th>
+            </tr>
+          </thead>
+          <tbody id="schedule-tbody"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- Create session (admin/coach only) -->
+    <section class="card hidden" id="create-session-card">
+      <h2>Add Practice Session</h2>
+      <form id="session-form" autocomplete="off">
+        <div class="form-grid">
+          <div class="form-row">
+            <label for="sel-group">Practice Group</label>
+            <select id="sel-group" required>
+              <option value="">Loading groups&hellip;</option>
+            </select>
+          </div>
+          <div class="form-row">
+            <label for="sel-date">Date</label>
+            <input id="sel-date" type="date" required />
+          </div>
+          <div class="form-row">
+            <label for="sel-start">Start Time</label>
+            <input id="sel-start" type="time" required />
+          </div>
+          <div class="form-row">
+            <label for="sel-end">End Time</label>
+            <input id="sel-end" type="time" required />
+          </div>
+          <div class="form-row form-row-full">
+            <label for="sel-location">Location</label>
+            <input id="sel-location" type="text" placeholder="e.g. Main Pool &mdash; Lane 4" />
+          </div>
+        </div>
+        <div id="session-error" class="state-msg error hidden"></div>
+        <button class="btn btn-primary" type="submit" id="btn-add-session">Add Session</button>
+      </form>
+    </section>
+
+    <!-- Create group (admin/coach only) -->
+    <section class="card hidden" id="create-group-card">
+      <h2>Create Practice Group</h2>
+      <form id="group-form" autocomplete="off">
+        <div class="form-grid">
+          <div class="form-row">
+            <label for="group-name">Group Name</label>
+            <input id="group-name" type="text" placeholder="e.g. Advanced Morning" required />
+          </div>
+          <div class="form-row">
+            <label for="group-level">Level</label>
+            <input id="group-level" type="text" placeholder="e.g. Competitive" />
+          </div>
+        </div>
+        <div id="group-error" class="state-msg error hidden"></div>
+        <button class="btn btn-primary" type="submit" id="btn-add-group">Create Group</button>
+      </form>
+    </section>
+  </main>
+
+  <script src="schedule.js"></script>
+</body>
+</html>
