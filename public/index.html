@@ -62,7 +62,7 @@
 
       <div id="users-loading" class="state-msg">Loading records&hellip;</div>
       <div id="users-error" class="state-msg error hidden"></div>
-      <div id="users-empty" class="state-msg hidden">No users found. Add one below.</div>
+      <div id="users-empty" class="state-msg hidden">No users found.</div>
 
       <div class="table-wrap">
         <table id="users-table" class="hidden">
@@ -81,35 +81,6 @@
       </div>
     </section>
 
-    <!-- Phase 2 – add user -->
-    <section class="card" id="admin-form-card">
-      <h2>Add User</h2>
-      <form id="add-user-form" autocomplete="off">
-        <div class="form-row">
-          <label for="input-name">Name</label>
-          <input id="input-name" type="text" placeholder="Full name" required />
-        </div>
-        <div class="form-row">
-          <label for="input-email">Email</label>
-          <input id="input-email" type="email" placeholder="email@example.com" required />
-        </div>
-        <div class="form-row">
-          <label for="input-password">Temporary Password</label>
-          <input id="input-password" type="password" placeholder="Create a password" required />
-        </div>
-        <div class="form-row">
-          <label for="input-role">Role</label>
-          <select id="input-role" required>
-            <option value="swimmer">Swimmer</option>
-            <option value="parent">Parent</option>
-            <option value="coach">Coach</option>
-            <option value="admin">Admin</option>
-          </select>
-        </div>
-        <div id="form-error" class="state-msg error hidden"></div>
-        <button class="btn btn-primary" type="submit" id="btn-add">Add User</button>
-      </form>
-    </section>
   </main>
 
   <script src="app.js"></script>

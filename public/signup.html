@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SwimSync Sign Up</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body class="auth-body">
+  <main class="auth-shell">
+    <section class="auth-card">
+      <div class="auth-brand">
+        <p class="eyebrow">SwimSync</p>
+        <h1>Create your account</h1>
+        <p class="auth-copy">Sign up as a swimmer or parent. Your account is saved directly to the SwimSync database.</p>
+      </div>
+
+      <form id="signup-form" class="auth-form" autocomplete="off">
+        <div class="form-row">
+          <label for="signup-name">Full name</label>
+          <input id="signup-name" type="text" placeholder="Your full name" required />
+        </div>
+        <div class="form-row">
+          <label for="signup-email">Email</label>
+          <input id="signup-email" type="email" placeholder="name@example.com" required />
+        </div>
+        <div class="form-row">
+          <label for="signup-password">Password</label>
+          <input id="signup-password" type="password" placeholder="At least 8 characters" minlength="8" required />
+        </div>
+        <div class="form-row">
+          <label for="signup-role">Role</label>
+          <select id="signup-role" required>
+            <option value="swimmer">Swimmer</option>
+            <option value="parent">Parent</option>
+          </select>
+        </div>
+
+        <div id="signup-error" class="state-msg error hidden"></div>
+        <div id="signup-success" class="state-msg hidden"></div>
+
+        <button class="btn btn-primary auth-submit" type="submit" id="btn-signup">Create Account</button>
+        <a class="btn btn-secondary auth-submit" href="/" style="text-decoration:none; justify-content:center;">Back to Login</a>
+      </form>
+    </section>
+  </main>
+
+  <script src="signup.js"></script>
+</body>
+</html>

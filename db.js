@@ -91,6 +91,34 @@ async function seedRoleTables(admin) {
   }
 }
 
+async function seedParentSwimmerLinks(admin) {
+  const [parents] = await admin.query(
+    `SELECT p.id, u.email
+     FROM parents p
+     JOIN users u ON p.user_id = u.id`
+  );
+
+  const [swimmers] = await admin.query(
+    `SELECT s.id, u.email
+     FROM swimmers s
+     JOIN users u ON s.user_id = u.id`
+  );
+
+  const parentByEmail = new Map(parents.map((parent) => [parent.email, parent.id]));
+  const swimmerByEmail = new Map(swimmers.map((swimmer) => [swimmer.email, swimmer.id]));
+
+  const demoParentId = parentByEmail.get("parent@swimsync.com");
+  const demoSwimmerId = swimmerByEmail.get("swimmer@swimsync.com");
+
+  if (demoParentId && demoSwimmerId) {
+    await admin.query(
+      `INSERT IGNORE INTO parent_swimmers (parent_id, swimmer_id, relationship, is_primary)
+       VALUES (?, ?, ?, ?)`,
+      [demoParentId, demoSwimmerId, "guardian", 1]
+    );
+  }
+}
+
 async function initDatabase(config) {
   const admin = await createAdminConnection(config);
 
@@ -122,6 +150,23 @@ async function initDatabase(config) {
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       CONSTRAINT fk_parents_user
         FOREIGN KEY (user_id) REFERENCES users(id)
+        ON DELETE CASCADE ON UPDATE CASCADE
+    )
+  `);
+
+  await admin.query(`
+    CREATE TABLE IF NOT EXISTS parent_swimmers (
+      parent_id INT NOT NULL,
+      swimmer_id INT NOT NULL,
+      relationship VARCHAR(30) NULL,
+      is_primary TINYINT(1) NOT NULL DEFAULT 0,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (parent_id, swimmer_id),
+      CONSTRAINT fk_parent_swimmers_parent
+        FOREIGN KEY (parent_id) REFERENCES parents(id)
+        ON DELETE CASCADE ON UPDATE CASCADE,
+      CONSTRAINT fk_parent_swimmers_swimmer
+        FOREIGN KEY (swimmer_id) REFERENCES swimmers(id)
         ON DELETE CASCADE ON UPDATE CASCADE
     )
   `);
@@ -237,6 +282,7 @@ async function initDatabase(config) {
 
   await seedUsers(admin);
   await seedRoleTables(admin);
+  await seedParentSwimmerLinks(admin);
 
   await admin.end();
 

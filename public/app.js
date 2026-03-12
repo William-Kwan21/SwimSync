@@ -4,13 +4,6 @@ const usersTbody = document.getElementById("users-tbody");
 const usersLoading = document.getElementById("users-loading");
 const usersError = document.getElementById("users-error");
 const usersEmpty = document.getElementById("users-empty");
-const formError = document.getElementById("form-error");
-const addForm = document.getElementById("add-user-form");
-const inputName = document.getElementById("input-name");
-const inputEmail = document.getElementById("input-email");
-const inputPassword = document.getElementById("input-password");
-const inputRole = document.getElementById("input-role");
-const btnAdd = document.getElementById("btn-add");
 const btnRefresh = document.getElementById("btn-refresh");
 const btnLogout = document.getElementById("btn-logout");
 const currentUserName = document.getElementById("current-user-name");
@@ -19,7 +12,6 @@ const currentUserRole = document.getElementById("current-user-role");
 const roleDescription = document.getElementById("role-description");
 const userRoleBadge = document.getElementById("user-role-badge");
 const usersSectionTitle = document.getElementById("users-section-title");
-const adminFormCard = document.getElementById("admin-form-card");
 const actionColumnHeading = document.getElementById("action-column-heading");
 
 let currentUser = null;
@@ -107,15 +99,12 @@ function applyRoleUI() {
 
   if (currentUser.role === "admin") {
     usersSectionTitle.textContent = "All Users in Database";
-    show(adminFormCard);
     actionColumnHeading.textContent = "Action";
   } else if (currentUser.role === "coach") {
     usersSectionTitle.textContent = "Team User Directory";
-    hide(adminFormCard);
     actionColumnHeading.textContent = "Access";
   } else {
     usersSectionTitle.textContent = "My Account";
-    hide(adminFormCard);
     actionColumnHeading.textContent = "Access";
   }
 }
@@ -192,41 +181,6 @@ async function loadUsers() {
     btnRefresh.disabled = false;
   }
 }
-
-addForm.addEventListener("submit", async (e) => {
-  e.preventDefault();
-  hide(formError);
-  btnAdd.disabled = true;
-  btnAdd.textContent = "Adding…";
-
-  try {
-    const res = await apiFetch("/api/users", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        name: inputName.value.trim(),
-        email: inputEmail.value.trim(),
-        password: inputPassword.value,
-        role: inputRole.value
-      })
-    });
-
-    const data = await safeJson(res);
-
-    if (!res.ok) {
-      showError(formError, (data && data.message) || `Request failed (${res.status}).`);
-      return;
-    }
-
-    addForm.reset();
-    await loadUsers();
-  } catch (err) {
-    showError(formError, `Network error: ${err.message}`);
-  } finally {
-    btnAdd.disabled = false;
-    btnAdd.textContent = "Add User";
-  }
-});
 
 usersTbody.addEventListener("click", async (e) => {
   const btn = e.target.closest("button.btn-danger");

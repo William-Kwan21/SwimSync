@@ -72,6 +72,10 @@ app.get("/", (_req, res) => {
   res.sendFile(path.join(__dirname, "public", "login.html"));
 });
 
+app.get("/signup", (_req, res) => {
+  res.sendFile(path.join(__dirname, "public", "signup.html"));
+});
+
 app.get("/app", (_req, res) => {
   res.sendFile(path.join(__dirname, "public", "index.html"));
 });
@@ -128,6 +132,70 @@ app.post("/api/login", async (req, res) => {
     });
   } catch (error) {
     return res.status(500).json({ message: "Login failed", error: error.message });
+  }
+});
+
+app.post("/api/signup", async (req, res) => {
+  const { name, email, password, role } = req.body;
+
+  if (!name || !email || !password || !role) {
+    return res.status(400).json({ message: "name, email, password, and role are required" });
+  }
+
+  if (!["swimmer", "parent"].includes(role)) {
+    return res.status(400).json({ message: "Role must be swimmer or parent" });
+  }
+
+  if (password.length < 8) {
+    return res.status(400).json({ message: "Password must be at least 8 characters" });
+  }
+
+  const cleanName = name.trim();
+  const cleanEmail = email.trim().toLowerCase();
+
+  if (!cleanName || !cleanEmail) {
+    return res.status(400).json({ message: "name and email cannot be blank" });
+  }
+
+  const connection = await pool.getConnection();
+
+  try {
+    await connection.beginTransaction();
+
+    const passwordHash = await bcrypt.hash(password, 10);
+
+    const [result] = await connection.query(
+      "INSERT INTO users (name, email, password_hash, role) VALUES (?, ?, ?, ?)",
+      [cleanName, cleanEmail, passwordHash, role]
+    );
+
+    if (role === "swimmer") {
+      await connection.query(
+        "INSERT INTO swimmers (user_id, date_of_birth, gender, skill_level) VALUES (?, NULL, NULL, NULL)",
+        [result.insertId]
+      );
+    }
+
+    if (role === "parent") {
+      await connection.query(
+        "INSERT INTO parents (user_id, phone, emergency_contact) VALUES (?, NULL, NULL)",
+        [result.insertId]
+      );
+    }
+
+    await connection.commit();
+
+    return res.status(201).json({ message: "Account created successfully" });
+  } catch (error) {
+    await connection.rollback();
+
+    if (error.code === "ER_DUP_ENTRY") {
+      return res.status(409).json({ message: "Email already exists" });
+    }
+
+    return res.status(500).json({ message: "Signup failed", error: error.message });
+  } finally {
+    connection.release();
   }
 });
 
@@ -343,8 +411,46 @@ app.delete("/api/schedule/:id", authenticate, requireRole("admin", "coach"), asy
 });
 
 /* ── team roster ── */
-app.get("/api/team", authenticate, async (_req, res) => {
+app.get("/api/team", authenticate, async (req, res) => {
   try {
+    if (req.user.role === "parent") {
+      const [parentRows] = await pool.query("SELECT id FROM parents WHERE user_id = ? LIMIT 1", [req.user.sub]);
+
+      if (parentRows.length === 0) {
+        return res.json({ coaches: [], swimmers: [], parents: [] });
+      }
+
+      const parentId = parentRows[0].id;
+
+      const [coaches] = await pool.query(
+        `SELECT u.id, u.name, u.email, c.certification, c.years_experience
+         FROM coaches c
+         JOIN users u ON c.user_id = u.id
+         ORDER BY u.name ASC`
+      );
+
+      const [swimmers] = await pool.query(
+        `SELECT u.id, u.name, u.email, s.date_of_birth, s.gender, s.skill_level,
+                ps.relationship, ps.is_primary
+         FROM parent_swimmers ps
+         JOIN swimmers s ON ps.swimmer_id = s.id
+         JOIN users u ON s.user_id = u.id
+         WHERE ps.parent_id = ?
+         ORDER BY u.name ASC`,
+        [parentId]
+      );
+
+      const [parents] = await pool.query(
+        `SELECT u.id, u.name, u.email, p.phone, p.emergency_contact
+         FROM parents p
+         JOIN users u ON p.user_id = u.id
+         WHERE p.id = ?`,
+        [parentId]
+      );
+
+      return res.json({ coaches, swimmers, parents });
+    }
+
     const [coaches] = await pool.query(
       `SELECT u.id, u.name, u.email, c.certification, c.years_experience
        FROM coaches c
@@ -366,6 +472,38 @@ app.get("/api/team", authenticate, async (_req, res) => {
     return res.json({ coaches, swimmers, parents });
   } catch (error) {
     return res.status(500).json({ message: "Failed to fetch team", error: error.message });
+  }
+});
+
+app.get("/api/my-swimmers", authenticate, requireRole("parent"), async (req, res) => {
+  try {
+    const [parentRows] = await pool.query("SELECT id FROM parents WHERE user_id = ? LIMIT 1", [req.user.sub]);
+
+    if (parentRows.length === 0) {
+      return res.json([]);
+    }
+
+    const [rows] = await pool.query(
+      `SELECT s.id AS swimmer_id,
+              u.id AS user_id,
+              u.name,
+              u.email,
+              s.date_of_birth,
+              s.gender,
+              s.skill_level,
+              ps.relationship,
+              ps.is_primary
+       FROM parent_swimmers ps
+       JOIN swimmers s ON ps.swimmer_id = s.id
+       JOIN users u ON s.user_id = u.id
+       WHERE ps.parent_id = ?
+       ORDER BY u.name ASC`,
+      [parentRows[0].id]
+    );
+
+    return res.json(rows);
+  } catch (error) {
+    return res.status(500).json({ message: "Failed to fetch linked swimmers", error: error.message });
   }
 });
 

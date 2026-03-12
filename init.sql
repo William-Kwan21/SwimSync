@@ -33,6 +33,21 @@ CREATE TABLE IF NOT EXISTS parents (
     ON DELETE CASCADE ON UPDATE CASCADE
 );
 
+CREATE TABLE IF NOT EXISTS parent_swimmers (
+  parent_id INT NOT NULL,
+  swimmer_id INT NOT NULL,
+  relationship VARCHAR(30) NULL,
+  is_primary TINYINT(1) NOT NULL DEFAULT 0,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (parent_id, swimmer_id),
+  CONSTRAINT fk_parent_swimmers_parent
+    FOREIGN KEY (parent_id) REFERENCES parents(id)
+    ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT fk_parent_swimmers_swimmer
+    FOREIGN KEY (swimmer_id) REFERENCES swimmers(id)
+    ON DELETE CASCADE ON UPDATE CASCADE
+);
+
 CREATE TABLE IF NOT EXISTS coaches (
   id INT AUTO_INCREMENT PRIMARY KEY,
   user_id INT NOT NULL UNIQUE,
