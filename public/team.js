@@ -19,6 +19,7 @@ const parentsTbody = document.getElementById("parents-tbody");
 const parentsCount = document.getElementById("parents-count");
 
 let currentUser = null;
+let practiceGroups = [];
 
 /* ── helpers ── */
 function show(el) { el.classList.remove("hidden"); }
@@ -57,6 +58,62 @@ async function apiFetch(url, options = {}) {
   return response;
 }
 
+async function safeJson(res) {
+  const text = await res.text();
+  if (!text || !text.trim()) return null;
+  try {
+    return JSON.parse(text);
+  } catch {
+    return null;
+  }
+}
+
+function canManageGroups() {
+  return currentUser && (currentUser.role === "admin" || currentUser.role === "coach");
+}
+
+function renderGroupSelect(swimmer) {
+  if (!canManageGroups()) {
+    return '<span class="muted-inline">No access</span>';
+  }
+
+  const options = practiceGroups
+    .map((group) => {
+      const selected = Number(group.id) === Number(swimmer.group_id) ? "selected" : "";
+      return `<option value="${group.id}" ${selected}>${escHtml(group.group_name)}</option>`;
+    })
+    .join("");
+
+  if (!options) {
+    return '<span class="muted-inline">No groups found</span>';
+  }
+
+  return `<select data-swimmer-group="${swimmer.swimmer_id}" aria-label="Select group for ${escHtml(swimmer.name)}">${options}</select>`;
+}
+
+function renderGroupAction(swimmer) {
+  if (!canManageGroups()) {
+    return '<span class="muted-inline">View only</span>';
+  }
+
+  if (!practiceGroups.length) {
+    return '<span class="muted-inline">No groups</span>';
+  }
+
+  return `<button class="btn btn-secondary" data-save-swimmer="${swimmer.swimmer_id}">Save</button>`;
+}
+
+async function loadPracticeGroups() {
+  if (!canManageGroups()) {
+    practiceGroups = [];
+    return;
+  }
+
+  const res = await apiFetch("/api/practice-groups");
+  if (!res.ok) throw new Error(`Failed to load groups (${res.status})`);
+  practiceGroups = await res.json();
+}
+
 /* ── health ── */
 async function checkHealth() {
   try {
@@ -76,6 +133,8 @@ async function loadTeam() {
   hide(teamError);
 
   try {
+    await loadPracticeGroups();
+
     const res = await apiFetch("/api/team");
     if (!res.ok) throw new Error(`Server error ${res.status}`);
     const { coaches, swimmers, parents } = await res.json();
@@ -105,8 +164,10 @@ async function loadTeam() {
             <td>${formatDate(s.date_of_birth)}</td>
             <td>${escHtml(s.gender)}</td>
             <td>${escHtml(s.skill_level)}</td>
+            <td>${escHtml(s.group_name || "Unassigned")}</td>
+            <td>${renderGroupSelect(s)} ${renderGroupAction(s)}</td>
           </tr>`).join("")
-      : `<tr><td colspan="5" class="muted-inline">No swimmers on record.</td></tr>`;
+      : `<tr><td colspan="7" class="muted-inline">No swimmers on record.</td></tr>`;
     show(swimmersCard);
 
     /* parents */
@@ -130,6 +191,47 @@ async function loadTeam() {
     show(teamError);
   }
 }
+
+swimmersTbody.addEventListener("click", async (event) => {
+  const btn = event.target.closest("button[data-save-swimmer]");
+  if (!btn || !canManageGroups()) {
+    return;
+  }
+
+  const swimmerId = Number(btn.dataset.saveSwimmer);
+  const select = swimmersTbody.querySelector(`select[data-swimmer-group="${swimmerId}"]`);
+  if (!select) {
+    return;
+  }
+
+  const groupId = Number(select.value);
+  if (Number.isNaN(swimmerId) || Number.isNaN(groupId)) {
+    return;
+  }
+
+  btn.disabled = true;
+  btn.textContent = "Saving…";
+
+  try {
+    const res = await apiFetch(`/api/swimmers/${swimmerId}/group`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ group_id: groupId })
+    });
+
+    const data = await safeJson(res);
+    if (!res.ok) {
+      throw new Error((data && data.message) || `Failed (${res.status})`);
+    }
+
+    await loadTeam();
+  } catch (err) {
+    teamError.textContent = `Failed to update swimmer group: ${err.message}`;
+    show(teamError);
+    btn.disabled = false;
+    btn.textContent = "Save";
+  }
+});
 
 btnLogout.addEventListener("click", redirectToLogin);
 

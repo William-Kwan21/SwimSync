@@ -70,6 +70,18 @@ CREATE TABLE IF NOT EXISTS practice_groups (
     ON DELETE SET NULL ON UPDATE CASCADE
 );
 
+CREATE TABLE IF NOT EXISTS swimmer_groups (
+  swimmer_id INT NOT NULL PRIMARY KEY,
+  group_id INT NOT NULL,
+  assigned_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT fk_swimmer_groups_swimmer
+    FOREIGN KEY (swimmer_id) REFERENCES swimmers(id)
+    ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT fk_swimmer_groups_group
+    FOREIGN KEY (group_id) REFERENCES practice_groups(id)
+    ON DELETE CASCADE ON UPDATE CASCADE
+);
+
 CREATE TABLE IF NOT EXISTS practice_schedule (
   id INT AUTO_INCREMENT PRIMARY KEY,
   group_id INT NOT NULL,
@@ -142,5 +154,29 @@ CREATE TABLE IF NOT EXISTS meet_entries (
     FOREIGN KEY (swimmer_id) REFERENCES swimmers(id)
     ON DELETE CASCADE ON UPDATE CASCADE
 );
+
+  INSERT INTO practice_groups (group_name, level, coach_id)
+  SELECT 'Junior 1', 'Junior', NULL
+  WHERE NOT EXISTS (SELECT 1 FROM practice_groups WHERE group_name = 'Junior 1' LIMIT 1);
+
+  INSERT INTO practice_groups (group_name, level, coach_id)
+  SELECT 'Junior 2', 'Junior', NULL
+  WHERE NOT EXISTS (SELECT 1 FROM practice_groups WHERE group_name = 'Junior 2' LIMIT 1);
+
+  INSERT INTO practice_groups (group_name, level, coach_id)
+  SELECT 'Senior 1', 'Senior', NULL
+  WHERE NOT EXISTS (SELECT 1 FROM practice_groups WHERE group_name = 'Senior 1' LIMIT 1);
+
+  INSERT INTO practice_groups (group_name, level, coach_id)
+  SELECT 'Senior 2', 'Senior', NULL
+  WHERE NOT EXISTS (SELECT 1 FROM practice_groups WHERE group_name = 'Senior 2' LIMIT 1);
+
+  INSERT INTO swimmer_groups (swimmer_id, group_id)
+  SELECT s.id, pg.id
+  FROM swimmers s
+  JOIN users u ON s.user_id = u.id
+  JOIN practice_groups pg ON pg.group_name = 'Junior 1'
+  WHERE u.email = 'swimmer@swimsync.com'
+  ON DUPLICATE KEY UPDATE group_id = VALUES(group_id);
 
 -- Seed data is inserted by the Node app on first boot so passwords can be bcrypt-hashed.

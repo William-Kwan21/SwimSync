@@ -174,6 +174,24 @@ app.post("/api/signup", async (req, res) => {
         "INSERT INTO swimmers (user_id, date_of_birth, gender, skill_level) VALUES (?, NULL, NULL, NULL)",
         [result.insertId]
       );
+
+      const [swimmerRows] = await connection.query(
+        "SELECT id FROM swimmers WHERE user_id = ? LIMIT 1",
+        [result.insertId]
+      );
+      const [defaultGroupRows] = await connection.query(
+        "SELECT id FROM practice_groups WHERE group_name = ? LIMIT 1",
+        ["Junior 1"]
+      );
+
+      if (swimmerRows.length && defaultGroupRows.length) {
+        await connection.query(
+          `INSERT INTO swimmer_groups (swimmer_id, group_id)
+           VALUES (?, ?)
+           ON DUPLICATE KEY UPDATE group_id = VALUES(group_id)`,
+          [swimmerRows[0].id, defaultGroupRows[0].id]
+        );
+      }
     }
 
     if (role === "parent") {
@@ -410,9 +428,98 @@ app.delete("/api/schedule/:id", authenticate, requireRole("admin", "coach"), asy
   }
 });
 
+app.put("/api/swimmers/:id/group", authenticate, requireRole("admin", "coach"), async (req, res) => {
+  const swimmerId = Number(req.params.id);
+  const groupId = Number(req.body.group_id);
+
+  if (Number.isNaN(swimmerId) || Number.isNaN(groupId)) {
+    return res.status(400).json({ message: "Valid swimmer id and group_id are required" });
+  }
+
+  try {
+    const [swimmerRows] = await pool.query("SELECT id FROM swimmers WHERE id = ? LIMIT 1", [swimmerId]);
+    if (swimmerRows.length === 0) {
+      return res.status(404).json({ message: "Swimmer not found" });
+    }
+
+    const [groupRows] = await pool.query("SELECT id FROM practice_groups WHERE id = ? LIMIT 1", [groupId]);
+    if (groupRows.length === 0) {
+      return res.status(404).json({ message: "Practice group not found" });
+    }
+
+    await pool.query(
+      `INSERT INTO swimmer_groups (swimmer_id, group_id)
+       VALUES (?, ?)
+       ON DUPLICATE KEY UPDATE group_id = VALUES(group_id), assigned_at = CURRENT_TIMESTAMP`,
+      [swimmerId, groupId]
+    );
+
+    const [rows] = await pool.query(
+      `SELECT s.id AS swimmer_id, u.name, u.email, pg.id AS group_id, pg.group_name, pg.level
+       FROM swimmers s
+       JOIN users u ON s.user_id = u.id
+       LEFT JOIN swimmer_groups sg ON sg.swimmer_id = s.id
+       LEFT JOIN practice_groups pg ON pg.id = sg.group_id
+       WHERE s.id = ?
+       LIMIT 1`,
+      [swimmerId]
+    );
+
+    return res.json(rows[0]);
+  } catch (error) {
+    return res.status(500).json({ message: "Failed to update swimmer group", error: error.message });
+  }
+});
+
 /* ── team roster ── */
 app.get("/api/team", authenticate, async (req, res) => {
   try {
+    if (req.user.role === "swimmer") {
+      const [groupPeers] = await pool.query(
+        `SELECT DISTINCT u.id, u.name, u.email, s.id AS swimmer_id, s.date_of_birth, s.gender, s.skill_level,
+                pg.id AS group_id, pg.group_name, pg.level
+         FROM swimmers me
+         JOIN swimmer_groups my_group ON my_group.swimmer_id = me.id
+         JOIN swimmer_groups sg ON sg.group_id = my_group.group_id
+         JOIN swimmers s ON s.id = sg.swimmer_id
+         JOIN users u ON s.user_id = u.id
+         JOIN practice_groups pg ON pg.id = sg.group_id
+         WHERE me.user_id = ?
+         ORDER BY u.name ASC`,
+        [req.user.sub]
+      );
+
+      let swimmers = groupPeers;
+      if (groupPeers.length === 0) {
+        const [selfOnly] = await pool.query(
+          `SELECT u.id, u.name, u.email, s.id AS swimmer_id, s.date_of_birth, s.gender, s.skill_level,
+                  NULL AS group_id, NULL AS group_name, NULL AS level
+           FROM swimmers s
+           JOIN users u ON s.user_id = u.id
+           WHERE u.id = ?
+           LIMIT 1`,
+          [req.user.sub]
+        );
+        swimmers = selfOnly;
+      }
+
+      const [coaches] = await pool.query(
+        `SELECT u.id, u.name, u.email, c.certification, c.years_experience
+         FROM coaches c
+         JOIN users u ON c.user_id = u.id
+         ORDER BY u.name ASC`
+      );
+
+      const [parents] = await pool.query(
+        `SELECT u.id, u.name, u.email, p.phone, p.emergency_contact
+         FROM parents p
+         JOIN users u ON p.user_id = u.id
+         ORDER BY u.name ASC`
+      );
+
+      return res.json({ coaches, swimmers, parents });
+    }
+
     if (req.user.role === "parent") {
       const [parentRows] = await pool.query("SELECT id FROM parents WHERE user_id = ? LIMIT 1", [req.user.sub]);
 
@@ -458,9 +565,12 @@ app.get("/api/team", authenticate, async (req, res) => {
        ORDER BY u.name ASC`
     );
     const [swimmers] = await pool.query(
-      `SELECT u.id, u.name, u.email, s.date_of_birth, s.gender, s.skill_level
+      `SELECT u.id, u.name, u.email, s.id AS swimmer_id, s.date_of_birth, s.gender, s.skill_level,
+            pg.id AS group_id, pg.group_name, pg.level
        FROM swimmers s
        JOIN users u ON s.user_id = u.id
+       LEFT JOIN swimmer_groups sg ON sg.swimmer_id = s.id
+       LEFT JOIN practice_groups pg ON pg.id = sg.group_id
        ORDER BY u.name ASC`
     );
     const [parents] = await pool.query(

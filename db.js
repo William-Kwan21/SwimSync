@@ -119,6 +119,57 @@ async function seedParentSwimmerLinks(admin) {
   }
 }
 
+async function seedPracticeGroups(admin) {
+  const defaultGroups = [
+    { group_name: "Junior 1", level: "Junior" },
+    { group_name: "Junior 2", level: "Junior" },
+    { group_name: "Senior 1", level: "Senior" },
+    { group_name: "Senior 2", level: "Senior" }
+  ];
+
+  for (const group of defaultGroups) {
+    await admin.query(
+      `INSERT INTO practice_groups (group_name, level, coach_id)
+       SELECT ?, ?, NULL
+       WHERE NOT EXISTS (
+         SELECT 1 FROM practice_groups WHERE group_name = ? LIMIT 1
+       )`,
+      [group.group_name, group.level, group.group_name]
+    );
+  }
+}
+
+async function seedSwimmerGroups(admin) {
+  const [groupRows] = await admin.query(
+    "SELECT id FROM practice_groups WHERE group_name = ? LIMIT 1",
+    ["Junior 1"]
+  );
+
+  if (groupRows.length === 0) {
+    return;
+  }
+
+  const [swimmerRows] = await admin.query(
+    `SELECT s.id
+     FROM swimmers s
+     JOIN users u ON s.user_id = u.id
+     WHERE u.email = ?
+     LIMIT 1`,
+    ["swimmer@swimsync.com"]
+  );
+
+  if (swimmerRows.length === 0) {
+    return;
+  }
+
+  await admin.query(
+    `INSERT INTO swimmer_groups (swimmer_id, group_id)
+     VALUES (?, ?)
+     ON DUPLICATE KEY UPDATE group_id = VALUES(group_id)`,
+    [swimmerRows[0].id, groupRows[0].id]
+  );
+}
+
 async function initDatabase(config) {
   const admin = await createAdminConnection(config);
 
@@ -194,6 +245,20 @@ async function initDatabase(config) {
       CONSTRAINT fk_practice_groups_coach
         FOREIGN KEY (coach_id) REFERENCES coaches(id)
         ON DELETE SET NULL ON UPDATE CASCADE
+    )
+  `);
+
+  await admin.query(`
+    CREATE TABLE IF NOT EXISTS swimmer_groups (
+      swimmer_id INT NOT NULL PRIMARY KEY,
+      group_id INT NOT NULL,
+      assigned_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      CONSTRAINT fk_swimmer_groups_swimmer
+        FOREIGN KEY (swimmer_id) REFERENCES swimmers(id)
+        ON DELETE CASCADE ON UPDATE CASCADE,
+      CONSTRAINT fk_swimmer_groups_group
+        FOREIGN KEY (group_id) REFERENCES practice_groups(id)
+        ON DELETE CASCADE ON UPDATE CASCADE
     )
   `);
 
@@ -283,6 +348,8 @@ async function initDatabase(config) {
   await seedUsers(admin);
   await seedRoleTables(admin);
   await seedParentSwimmerLinks(admin);
+  await seedPracticeGroups(admin);
+  await seedSwimmerGroups(admin);
 
   await admin.end();
 
