@@ -1,3 +1,4 @@
+const bcrypt = require("bcryptjs");
 const mysql = require("mysql2/promise");
 
 async function createAdminConnection(config) {
@@ -9,20 +10,94 @@ async function createAdminConnection(config) {
   });
 }
 
+async function ensureUsersTable(admin) {
+  await admin.query(`
+    CREATE TABLE IF NOT EXISTS users (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      name VARCHAR(100) NOT NULL,
+      email VARCHAR(150) NOT NULL UNIQUE,
+      password_hash VARCHAR(255) NULL,
+      role ENUM('admin','coach','swimmer','parent') NOT NULL DEFAULT 'swimmer',
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  try {
+    await admin.query("ALTER TABLE users ADD COLUMN password_hash VARCHAR(255) NULL AFTER email");
+  } catch (error) {
+    if (error.code !== "ER_DUP_FIELDNAME") {
+      throw error;
+    }
+  }
+
+  try {
+    await admin.query("ALTER TABLE users ADD COLUMN role ENUM('admin','coach','swimmer','parent') NOT NULL DEFAULT 'swimmer' AFTER password_hash");
+  } catch (error) {
+    if (error.code !== "ER_DUP_FIELDNAME") {
+      throw error;
+    }
+  }
+}
+
+async function seedUsers(admin) {
+  const [rows] = await admin.query("SELECT COUNT(*) AS count FROM users");
+  if (rows[0].count > 0) {
+    return;
+  }
+
+  const demoUsers = [
+    { name: "Alex Admin", email: "admin@swimsync.com", password: "Admin123!", role: "admin" },
+    { name: "Casey Coach", email: "coach@swimsync.com", password: "Coach123!", role: "coach" },
+    { name: "Sam Swimmer", email: "swimmer@swimsync.com", password: "Swimmer123!", role: "swimmer" },
+    { name: "Pat Parent", email: "parent@swimsync.com", password: "Parent123!", role: "parent" }
+  ];
+
+  for (const user of demoUsers) {
+    const passwordHash = await bcrypt.hash(user.password, 10);
+    await admin.query(
+      `INSERT INTO users (name, email, password_hash, role) VALUES (?, ?, ?, ?)`,
+      [user.name, user.email, passwordHash, user.role]
+    );
+  }
+}
+
+async function seedRoleTables(admin) {
+  const [allUsers] = await admin.query("SELECT id, role FROM users ORDER BY id ASC");
+
+  for (const user of allUsers) {
+    if (user.role === "swimmer") {
+      await admin.query(
+        `INSERT IGNORE INTO swimmers (user_id, date_of_birth, gender, skill_level)
+         VALUES (?, ?, ?, ?)`,
+        [user.id, "2011-06-14", "Female", "Intermediate"]
+      );
+    }
+
+    if (user.role === "parent") {
+      await admin.query(
+        `INSERT IGNORE INTO parents (user_id, phone, emergency_contact)
+         VALUES (?, ?, ?)`,
+        [user.id, "555-0101", "Jamie Parent"]
+      );
+    }
+
+    if (user.role === "coach" || user.role === "admin") {
+      await admin.query(
+        `INSERT IGNORE INTO coaches (user_id, certification, years_experience)
+         VALUES (?, ?, ?)`,
+        [user.id, "USA Swimming Level 2", 5]
+      );
+    }
+  }
+}
+
 async function initDatabase(config) {
   const admin = await createAdminConnection(config);
 
   await admin.query(`CREATE DATABASE IF NOT EXISTS \`${config.database}\``);
   await admin.query(`USE \`${config.database}\``);
 
-  await admin.query(`
-    CREATE TABLE IF NOT EXISTS users (
-      id INT AUTO_INCREMENT PRIMARY KEY,
-      name VARCHAR(100) NOT NULL,
-      email VARCHAR(150) NOT NULL UNIQUE,
-      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    )
-  `);
+  await ensureUsersTable(admin);
 
   await admin.query(`
     CREATE TABLE IF NOT EXISTS swimmers (
@@ -160,20 +235,8 @@ async function initDatabase(config) {
     )
   `);
 
-  const [rows] = await admin.query("SELECT COUNT(*) AS count FROM users");
-  if (rows[0].count === 0) {
-    await admin.query(
-      `INSERT INTO users (name, email) VALUES
-       (?, ?),
-       (?, ?),
-       (?, ?)` ,
-      [
-        "Liam Waters", "liam@example.com",
-        "Maya Lane", "maya@example.com",
-        "Noah Brooks", "noah@example.com"
-      ]
-    );
-  }
+  await seedUsers(admin);
+  await seedRoleTables(admin);
 
   await admin.end();
 

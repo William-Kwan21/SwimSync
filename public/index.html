@@ -9,17 +9,46 @@
 <body>
   <header>
     <div class="header-inner">
-      <h1>&#127946; hello-db</h1>
-      <p class="subtitle">Swim Management System &mdash; User Database</p>
-      <span id="db-status" class="badge loading">Connecting&hellip;</span>
+      <div class="header-top-row">
+        <div>
+          <h1>&#127946; SwimSync</h1>
+          <p class="subtitle">Swim Management System &mdash; Login + RBAC Demo</p>
+        </div>
+        <button class="btn btn-secondary" id="btn-logout" type="button">Log Out</button>
+      </div>
+      <div class="header-meta-row">
+        <span id="db-status" class="badge loading">Connecting&hellip;</span>
+        <span id="user-role-badge" class="badge role-badge hidden"></span>
+      </div>
     </div>
   </header>
 
   <main>
+    <section class="card user-summary-card">
+      <div class="card-header">
+        <h2>Signed-in User</h2>
+      </div>
+      <div class="summary-grid">
+        <div>
+          <p class="summary-label">Name</p>
+          <p id="current-user-name" class="summary-value">Loading&hellip;</p>
+        </div>
+        <div>
+          <p class="summary-label">Email</p>
+          <p id="current-user-email" class="summary-value">Loading&hellip;</p>
+        </div>
+        <div>
+          <p class="summary-label">Role</p>
+          <p id="current-user-role" class="summary-value">Loading&hellip;</p>
+        </div>
+      </div>
+      <div id="role-description" class="state-msg info">Checking role permissions&hellip;</div>
+    </section>
+
     <!-- Phase 1 – retrieve and display dummy records -->
     <section class="card">
       <div class="card-header">
-        <h2>Users in Database</h2>
+        <h2 id="users-section-title">Users in Database</h2>
         <button class="btn btn-secondary" id="btn-refresh">&#8635; Refresh</button>
       </div>
 
@@ -34,8 +63,9 @@
               <th>#</th>
               <th>Name</th>
               <th>Email</th>
+              <th>Role</th>
               <th>Created</th>
-              <th>Action</th>
+              <th id="action-column-heading">Action</th>
             </tr>
           </thead>
           <tbody id="users-tbody"></tbody>
@@ -44,7 +74,7 @@
     </section>
 
     <!-- Phase 2 – add user -->
-    <section class="card">
+    <section class="card" id="admin-form-card">
       <h2>Add User</h2>
       <form id="add-user-form" autocomplete="off">
         <div class="form-row">
@@ -54,6 +84,19 @@
         <div class="form-row">
           <label for="input-email">Email</label>
           <input id="input-email" type="email" placeholder="email@example.com" required />
+        </div>
+        <div class="form-row">
+          <label for="input-password">Temporary Password</label>
+          <input id="input-password" type="password" placeholder="Create a password" required />
+        </div>
+        <div class="form-row">
+          <label for="input-role">Role</label>
+          <select id="input-role" required>
+            <option value="swimmer">Swimmer</option>
+            <option value="parent">Parent</option>
+            <option value="coach">Coach</option>
+            <option value="admin">Admin</option>
+          </select>
         </div>
         <div id="form-error" class="state-msg error hidden"></div>
         <button class="btn btn-primary" type="submit" id="btn-add">Add User</button>

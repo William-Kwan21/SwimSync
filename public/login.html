@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SwimSync Login</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body class="auth-body">
+  <main class="auth-shell">
+    <section class="auth-card">
+      <div class="auth-brand">
+        <p class="eyebrow">SwimSync</p>
+        <h1>Role-based access login</h1>
+        <p class="auth-copy">Sign in with a seeded account to view the RBAC demo for admins, coaches, swimmers, and parents.</p>
+      </div>
+
+      <form id="login-form" class="auth-form" autocomplete="off">
+        <div class="form-row">
+          <label for="login-email">Email</label>
+          <input id="login-email" type="email" placeholder="name@example.com" required />
+        </div>
+        <div class="form-row">
+          <label for="login-password">Password</label>
+          <input id="login-password" type="password" placeholder="••••••••" required />
+        </div>
+        <div id="login-error" class="state-msg error hidden"></div>
+        <button class="btn btn-primary auth-submit" type="submit" id="btn-login">Sign In</button>
+      </form>
+
+      <section class="demo-accounts">
+        <h2>Demo accounts</h2>
+        <ul>
+          <li><strong>Admin:</strong> admin@swimsync.com / Admin123!</li>
+          <li><strong>Coach:</strong> coach@swimsync.com / Coach123!</li>
+          <li><strong>Swimmer:</strong> swimmer@swimsync.com / Swimmer123!</li>
+          <li><strong>Parent:</strong> parent@swimsync.com / Parent123!</li>
+        </ul>
+      </section>
+    </section>
+  </main>
+
+  <script src="login.js"></script>
+</body>
+</html>

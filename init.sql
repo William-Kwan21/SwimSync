@@ -5,6 +5,8 @@ CREATE TABLE IF NOT EXISTS users (
   id INT AUTO_INCREMENT PRIMARY KEY,
   name VARCHAR(100) NOT NULL,
   email VARCHAR(150) NOT NULL UNIQUE,
+  password_hash VARCHAR(255) NULL,
+  role ENUM('admin','coach','swimmer','parent') NOT NULL DEFAULT 'swimmer',
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -126,10 +128,4 @@ CREATE TABLE IF NOT EXISTS meet_entries (
     ON DELETE CASCADE ON UPDATE CASCADE
 );
 
-INSERT INTO users (name, email)
-SELECT * FROM (
-  SELECT 'Liam Waters', 'liam@example.com' UNION ALL
-  SELECT 'Maya Lane', 'maya@example.com' UNION ALL
-  SELECT 'Noah Brooks', 'noah@example.com'
-) AS temp
-WHERE NOT EXISTS (SELECT 1 FROM users LIMIT 1);
+-- Seed data is inserted by the Node app on first boot so passwords can be bcrypt-hashed.

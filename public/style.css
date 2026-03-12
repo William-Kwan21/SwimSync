@@ -23,6 +23,13 @@ body {
   line-height: 1.5;
 }
 
+.auth-body {
+  display: grid;
+  place-items: center;
+  padding: 1.5rem;
+  background: radial-gradient(circle at top, #dce8ff 0%, #f0f4fa 45%, #e8eef7 100%);
+}
+
 /* ── header ── */
 header {
   background: linear-gradient(135deg, #1a6edb 0%, #0d3f8f 100%);
@@ -30,6 +37,18 @@ header {
   padding: 2rem 1.5rem;
 }
 .header-inner { max-width: 860px; margin: auto; }
+.header-top-row,
+.header-meta-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.header-meta-row {
+  margin-top: 0.75rem;
+  flex-wrap: wrap;
+}
 
 header h1 { font-size: 2rem; font-weight: 700; }
 .subtitle { margin-top: 0.25rem; opacity: .85; font-size: 0.95rem; }
@@ -49,6 +68,11 @@ header h1 { font-size: 2rem; font-weight: 700; }
 .badge.ok   { background: var(--green); }
 .badge.fail { background: var(--red); }
 .badge.loading { background: rgba(255,255,255,.25); }
+.role-badge { text-transform: uppercase; }
+.role-admin { background: #6d28d9; color: #fff; }
+.role-coach { background: #0f766e; color: #fff; }
+.role-swimmer { background: #2563eb; color: #fff; }
+.role-parent { background: #ea580c; color: #fff; }
 
 /* ── main ── */
 main {
@@ -92,6 +116,7 @@ main {
   margin-bottom: 0.75rem;
 }
 .state-msg.error { color: var(--red); background: #fef2f2; border-color: #fca5a5; }
+.state-msg.info { color: #1d4ed8; background: #eff6ff; border-color: #93c5fd; }
 .hidden { display: none !important; }
 
 /* ── table ── */
@@ -117,6 +142,23 @@ td {
 }
 tbody tr:last-child td { border-bottom: none; }
 tbody tr:hover { background: #f6f8fb; }
+
+.table-role,
+.role-pill {
+  display: inline-block;
+  padding: 0.2rem 0.6rem;
+  border-radius: 999px;
+  color: #fff;
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.muted-inline {
+  color: var(--muted);
+  font-size: 0.82rem;
+}
 
 /* ── buttons ── */
 .btn {
@@ -149,7 +191,9 @@ tbody tr:hover { background: #f6f8fb; }
 }
 label { font-size: 0.85rem; font-weight: 600; color: var(--muted); }
 input[type="text"],
-input[type="email"] {
+input[type="email"],
+input[type="password"],
+select {
   padding: 0.55rem 0.8rem;
   border: 1px solid var(--border);
   border-radius: 6px;
@@ -164,7 +208,102 @@ input:focus {
   box-shadow: 0 0 0 3px rgba(26,110,219,.15);
 }
 
+select:focus {
+  outline: none;
+  border-color: var(--blue);
+  box-shadow: 0 0 0 3px rgba(26,110,219,.15);
+}
+
+.summary-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.summary-label {
+  color: var(--muted);
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.summary-value {
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.auth-shell {
+  width: min(100%, 960px);
+}
+
+.auth-card {
+  display: grid;
+  grid-template-columns: 1.1fr 1fr;
+  gap: 1.5rem;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  box-shadow: 0 12px 40px rgba(15, 23, 42, 0.12);
+  padding: 2rem;
+}
+
+.auth-brand {
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+  justify-content: center;
+}
+
+.eyebrow {
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--blue);
+}
+
+.auth-copy {
+  color: var(--muted);
+  max-width: 34ch;
+}
+
+.auth-form {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.auth-submit {
+  margin-top: 0.35rem;
+}
+
+.demo-accounts {
+  grid-column: 1 / -1;
+  background: #f8fbff;
+  border: 1px solid #dbeafe;
+  border-radius: 12px;
+  padding: 1rem 1.1rem;
+}
+
+.demo-accounts ul {
+  margin-top: 0.6rem;
+  padding-left: 1.2rem;
+}
+
+.demo-accounts li + li {
+  margin-top: 0.35rem;
+}
+
 /* ── responsive ── */
 @media (max-width: 520px) {
-  th:nth-child(4), td:nth-child(4) { display: none; }
+  .header-top-row,
+  .summary-grid,
+  .auth-card {
+    grid-template-columns: 1fr;
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  th:nth-child(5), td:nth-child(5) { display: none; }
 }
