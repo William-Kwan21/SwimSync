@@ -66,7 +66,7 @@ function requireRole(...allowedRoles) {
 }
 
 app.use(express.json());
-app.use(express.static(path.join(__dirname, "public")));
+app.use(express.static(path.join(__dirname, "public"), { index: false }));
 
 app.get("/", (_req, res) => {
   res.sendFile(path.join(__dirname, "public", "login.html"));
