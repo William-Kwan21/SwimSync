@@ -18,6 +18,8 @@ const selDate = document.getElementById("sel-date");
 const selStart = document.getElementById("sel-start");
 const selEnd = document.getElementById("sel-end");
 const selLocation = document.getElementById("sel-location");
+const repeatWeekly = document.getElementById("repeat-weekly");
+const repeatCount = document.getElementById("repeat-count");
 const sessionError = document.getElementById("session-error");
 const btnAddSession = document.getElementById("btn-add-session");
 
@@ -28,12 +30,19 @@ const groupLevel = document.getElementById("group-level");
 const groupError = document.getElementById("group-error");
 
 let currentUser = null;
+let sessionsById = new Map();
 
 /* ── helpers ── */
-function show(el) { el.classList.remove("hidden"); }
-function hide(el) { el.classList.add("hidden"); }
+function show(el) {
+  el.classList.remove("hidden");
+}
+function hide(el) {
+  el.classList.add("hidden");
+}
 
-function getToken() { return localStorage.getItem("swimsyncToken"); }
+function getToken() {
+  return localStorage.getItem("swimsyncToken");
+}
 
 function clearSession() {
   localStorage.removeItem("swimsyncToken");
@@ -61,7 +70,12 @@ function showErr(el, msg) {
 function formatDate(d) {
   if (!d) return "—";
   const dt = new Date(d);
-  return dt.toLocaleDateString("en-US", { weekday: "short", year: "numeric", month: "short", day: "numeric" });
+  return dt.toLocaleDateString("en-US", {
+    weekday: "short",
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+  });
 }
 
 function formatTime(t) {
@@ -71,17 +85,37 @@ function formatTime(t) {
   return `${hr % 12 || 12}:${m} ${hr < 12 ? "AM" : "PM"}`;
 }
 
+function toDateInputValue(d) {
+  if (!d) return "";
+  return new Date(d).toISOString().slice(0, 10);
+}
+
+function toTimeInputValue(t) {
+  if (!t) return "";
+  return String(t).slice(0, 5);
+}
+
 async function safeJson(res) {
   const text = await res.text();
   if (!text || !text.trim()) return null;
-  try { return JSON.parse(text); } catch { return null; }
+  try {
+    return JSON.parse(text);
+  } catch {
+    return null;
+  }
 }
 
 async function apiFetch(url, options = {}) {
   const token = getToken();
-  const headers = { ...(options.headers || {}), Authorization: `Bearer ${token}` };
+  const headers = {
+    ...(options.headers || {}),
+    Authorization: `Bearer ${token}`,
+  };
   const response = await fetch(url, { ...options, headers });
-  if (response.status === 401) { redirectToLogin(); throw new Error("Session expired"); }
+  if (response.status === 401) {
+    redirectToLogin();
+    throw new Error("Session expired");
+  }
   return response;
 }
 
@@ -104,7 +138,12 @@ async function loadGroups() {
     const res = await apiFetch("/api/practice-groups");
     const groups = await res.json();
     selGroup.innerHTML = groups.length
-      ? groups.map(g => `<option value="${g.id}">${escHtml(g.group_name)} (${escHtml(g.level || "—")})</option>`).join("")
+      ? groups
+          .map(
+            (g) =>
+              `<option value="${g.id}">${escHtml(g.group_name)} (${escHtml(g.level || "—")})</option>`,
+          )
+          .join("")
       : `<option value="">No groups yet — create one below</option>`;
   } catch {
     selGroup.innerHTML = `<option value="">Failed to load groups</option>`;
@@ -123,6 +162,7 @@ async function loadSchedule() {
     const res = await apiFetch("/api/schedule");
     const sessions = await res.json();
     scheduleTbody.innerHTML = "";
+    sessionsById = new Map();
 
     if (!sessions.length) {
       hide(scheduleLoading);
@@ -130,11 +170,17 @@ async function loadSchedule() {
       return;
     }
 
-    const canEdit = currentUser && (currentUser.role === "admin" || currentUser.role === "coach");
+    const canEdit =
+      currentUser &&
+      (currentUser.role === "admin" || currentUser.role === "coach");
 
     sessions.forEach((s, i) => {
+      sessionsById.set(String(s.id), s);
       const action = canEdit
-        ? `<button class="btn btn-danger" data-id="${s.id}">Remove</button>`
+        ? `<div class="table-actions">
+             <button class="btn btn-secondary" data-action="edit" data-id="${s.id}">Edit</button>
+             <button class="btn btn-danger" data-action="remove" data-id="${s.id}">Remove</button>
+           </div>`
         : '<span class="muted-inline">View only</span>';
       const tr = document.createElement("tr");
       tr.dataset.id = s.id;
@@ -162,15 +208,22 @@ async function loadSchedule() {
 
 /* ── remove session ── */
 scheduleTbody.addEventListener("click", async (e) => {
-  const btn = e.target.closest("button.btn-danger");
+  const btn = e.target.closest("button[data-action]");
   if (!btn) return;
+  if (btn.dataset.action === "edit") {
+    await editSession(btn.dataset.id);
+    return;
+  }
+  if (btn.dataset.action !== "remove") return;
   if (!confirm("Remove this session?")) return;
 
   btn.disabled = true;
   btn.textContent = "Removing…";
 
   try {
-    const res = await apiFetch(`/api/schedule/${btn.dataset.id}`, { method: "DELETE" });
+    const res = await apiFetch(`/api/schedule/${btn.dataset.id}`, {
+      method: "DELETE",
+    });
     if (!res.ok) {
       const data = await safeJson(res);
       alert(`Failed: ${(data && data.message) || res.status}`);
@@ -185,6 +238,60 @@ scheduleTbody.addEventListener("click", async (e) => {
     btn.textContent = "Remove";
   }
 });
+
+async function editSession(sessionId) {
+  const session = sessionsById.get(String(sessionId));
+  if (!session) {
+    alert("Session data is out of date. Please refresh and try again.");
+    return;
+  }
+
+  const nextDate = prompt(
+    "Practice date (YYYY-MM-DD)",
+    toDateInputValue(session.practice_date),
+  );
+  if (nextDate === null) return;
+  const nextStart = prompt(
+    "Start time (HH:MM)",
+    toTimeInputValue(session.start_time),
+  );
+  if (nextStart === null) return;
+  const nextEnd = prompt(
+    "End time (HH:MM)",
+    toTimeInputValue(session.end_time),
+  );
+  if (nextEnd === null) return;
+  const nextLocation = prompt("Location", session.location || "") ?? "";
+
+  if (!nextDate || !nextStart || !nextEnd) {
+    alert("Date, start time, and end time are required.");
+    return;
+  }
+
+  try {
+    const response = await apiFetch(`/api/schedule/${sessionId}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        group_id: session.group_id,
+        practice_date: nextDate,
+        start_time: nextStart,
+        end_time: nextEnd,
+        location: nextLocation.trim(),
+      }),
+    });
+
+    if (!response.ok) {
+      const data = await safeJson(response);
+      alert(`Failed to update: ${(data && data.message) || response.status}`);
+      return;
+    }
+
+    await loadSchedule();
+  } catch (err) {
+    alert(`Error updating session: ${err.message}`);
+  }
+}
 
 /* ── add session ── */
 sessionForm.addEventListener("submit", async (e) => {
@@ -202,8 +309,14 @@ sessionForm.addEventListener("submit", async (e) => {
         practice_date: selDate.value,
         start_time: selStart.value,
         end_time: selEnd.value,
-        location: selLocation.value.trim()
-      })
+        location: selLocation.value.trim(),
+        repeat_weeks: repeatWeekly.checked
+          ? Math.min(
+              24,
+              Math.max(1, Number.parseInt(repeatCount.value, 10) || 1),
+            )
+          : 1,
+      }),
     });
 
     const data = await safeJson(res);
@@ -213,6 +326,7 @@ sessionForm.addEventListener("submit", async (e) => {
     }
 
     sessionForm.reset();
+    repeatCount.value = "1";
     await loadSchedule();
   } catch (err) {
     showErr(sessionError, `Network error: ${err.message}`);
@@ -236,8 +350,8 @@ groupForm.addEventListener("submit", async (e) => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         group_name: groupName.value.trim(),
-        level: groupLevel.value.trim()
-      })
+        level: groupLevel.value.trim(),
+      }),
     });
 
     const data = await safeJson(res);
@@ -261,11 +375,18 @@ btnLogout.addEventListener("click", redirectToLogin);
 
 /* ── init ── */
 async function init() {
-  if (!getToken()) { redirectToLogin(); return; }
+  if (!getToken()) {
+    redirectToLogin();
+    return;
+  }
 
   const cached = localStorage.getItem("swimsyncUser");
   if (cached) {
-    try { currentUser = JSON.parse(cached); } catch { /* ignore */ }
+    try {
+      currentUser = JSON.parse(cached);
+    } catch {
+      /* ignore */
+    }
   }
 
   if (!currentUser) {
