@@ -38,9 +38,29 @@
       <section class="card">
         <div class="card-header">
           <h2>Upcoming Practice Sessions</h2>
-          <button class="btn btn-secondary" id="btn-refresh">
-            &#8635; Refresh
-          </button>
+          <div class="card-header-actions">
+            <div class="date-button-wrap">
+              <button
+                class="btn btn-secondary"
+                id="btn-view-date"
+                type="button"
+              >
+                Select Date
+              </button>
+              <input
+                id="view-date"
+                class="date-button-input"
+                type="date"
+                aria-label="Filter by day"
+              />
+            </div>
+            <button class="btn btn-secondary" id="btn-clear-date" type="button">
+              All Days
+            </button>
+            <button class="btn btn-secondary" id="btn-refresh">
+              &#8635; Refresh
+            </button>
+          </div>
         </div>
         <div id="schedule-loading" class="state-msg">
           Loading schedule&hellip;
@@ -114,6 +134,42 @@
                 max="24"
                 value="1"
               />
+            </div>
+            <div class="form-row">
+              <label for="repeat-day">Day</label>
+              <details class="day-picker-dropdown" id="repeat-days-picker">
+                <summary>Select day(s)</summary>
+                <div class="day-picker-list">
+                  <label
+                    ><input type="checkbox" name="repeat-day" value="1" />
+                    Monday</label
+                  >
+                  <label
+                    ><input type="checkbox" name="repeat-day" value="2" />
+                    Tuesday</label
+                  >
+                  <label
+                    ><input type="checkbox" name="repeat-day" value="3" />
+                    Wednesday</label
+                  >
+                  <label
+                    ><input type="checkbox" name="repeat-day" value="4" />
+                    Thursday</label
+                  >
+                  <label
+                    ><input type="checkbox" name="repeat-day" value="5" />
+                    Friday</label
+                  >
+                  <label
+                    ><input type="checkbox" name="repeat-day" value="6" />
+                    Saturday</label
+                  >
+                  <label
+                    ><input type="checkbox" name="repeat-day" value="0" />
+                    Sunday</label
+                  >
+                </div>
+              </details>
             </div>
           </div>
           <div id="session-error" class="state-msg error hidden"></div>

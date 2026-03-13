@@ -10,6 +10,9 @@ const scheduleLoading = document.getElementById("schedule-loading");
 const scheduleError = document.getElementById("schedule-error");
 const scheduleEmpty = document.getElementById("schedule-empty");
 const schedActionHeading = document.getElementById("sched-action-heading");
+const viewDate = document.getElementById("view-date");
+const btnViewDate = document.getElementById("btn-view-date");
+const btnClearDate = document.getElementById("btn-clear-date");
 
 const createSessionCard = document.getElementById("create-session-card");
 const sessionForm = document.getElementById("session-form");
@@ -20,6 +23,7 @@ const selEnd = document.getElementById("sel-end");
 const selLocation = document.getElementById("sel-location");
 const repeatWeekly = document.getElementById("repeat-weekly");
 const repeatCount = document.getElementById("repeat-count");
+const repeatDaysPicker = document.getElementById("repeat-days-picker");
 const sessionError = document.getElementById("session-error");
 const btnAddSession = document.getElementById("btn-add-session");
 
@@ -95,6 +99,62 @@ function toTimeInputValue(t) {
   return String(t).slice(0, 5);
 }
 
+function getSelectedRepeatDays() {
+  const checkboxes = document.querySelectorAll(
+    'input[name="repeat-day"]:checked',
+  );
+  return Array.from(checkboxes)
+    .map((input) => Number(input.value))
+    .filter((value) => Number.isInteger(value) && value >= 0 && value <= 6);
+}
+
+function updateRepeatSummary() {
+  if (!repeatDaysPicker) return;
+  const summary = repeatDaysPicker.querySelector("summary");
+  if (!summary) return;
+
+  const labels = {
+    0: "Sun",
+    1: "Mon",
+    2: "Tue",
+    3: "Wed",
+    4: "Thu",
+    5: "Fri",
+    6: "Sat",
+  };
+  const selected = getSelectedRepeatDays();
+
+  summary.textContent = selected.length
+    ? selected.map((d) => labels[d]).join(", ")
+    : "Select day(s)";
+}
+
+function formatViewDateLabel(dateStr) {
+  if (!dateStr) return "Select Date";
+  const date = new Date(`${dateStr}T00:00:00`);
+  if (Number.isNaN(date.getTime())) return "Select Date";
+  return date.toLocaleDateString("en-US", {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+  });
+}
+
+function updateViewDateLabel() {
+  if (!btnViewDate) return;
+  btnViewDate.textContent = formatViewDateLabel(viewDate.value);
+}
+
+function openViewDateCalendar() {
+  if (!viewDate) return;
+  if (typeof viewDate.showPicker === "function") {
+    viewDate.showPicker();
+    return;
+  }
+  viewDate.focus();
+  viewDate.click();
+}
+
 async function safeJson(res) {
   const text = await res.text();
   if (!text || !text.trim()) return null;
@@ -159,7 +219,10 @@ async function loadSchedule() {
   btnRefresh.disabled = true;
 
   try {
-    const res = await apiFetch("/api/schedule");
+    const query = viewDate.value
+      ? `?date=${encodeURIComponent(viewDate.value)}`
+      : "";
+    const res = await apiFetch(`/api/schedule${query}`);
     const sessions = await res.json();
     scheduleTbody.innerHTML = "";
     sessionsById = new Map();
@@ -316,6 +379,7 @@ sessionForm.addEventListener("submit", async (e) => {
               Math.max(1, Number.parseInt(repeatCount.value, 10) || 1),
             )
           : 1,
+        repeat_days: repeatWeekly.checked ? getSelectedRepeatDays() : [],
       }),
     });
 
@@ -327,6 +391,7 @@ sessionForm.addEventListener("submit", async (e) => {
 
     sessionForm.reset();
     repeatCount.value = "1";
+    updateRepeatSummary();
     await loadSchedule();
   } catch (err) {
     showErr(sessionError, `Network error: ${err.message}`);
@@ -371,6 +436,20 @@ groupForm.addEventListener("submit", async (e) => {
 });
 
 btnRefresh.addEventListener("click", () => loadSchedule());
+btnViewDate.addEventListener("click", openViewDateCalendar);
+viewDate.addEventListener("change", () => {
+  updateViewDateLabel();
+  loadSchedule();
+});
+btnClearDate.addEventListener("click", () => {
+  viewDate.value = "";
+  updateViewDateLabel();
+  loadSchedule();
+});
+
+if (repeatDaysPicker) {
+  repeatDaysPicker.addEventListener("change", updateRepeatSummary);
+}
 btnLogout.addEventListener("click", redirectToLogin);
 
 /* ── init ── */
@@ -409,6 +488,8 @@ async function init() {
 
   await checkHealth();
   await loadGroups();
+  updateRepeatSummary();
+  updateViewDateLabel();
   await loadSchedule();
 }
 

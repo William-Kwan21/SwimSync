@@ -361,12 +361,10 @@ app.get("/api/practice-groups", authenticate, async (_req, res) => {
     );
     return res.json(rows);
   } catch (error) {
-    return res
-      .status(500)
-      .json({
-        message: "Failed to fetch practice groups",
-        error: error.message,
-      });
+    return res.status(500).json({
+      message: "Failed to fetch practice groups",
+      error: error.message,
+    });
   }
 });
 
@@ -413,14 +411,34 @@ app.post(
 
 /* ── practice schedule ── */
 app.get("/api/schedule", authenticate, async (_req, res) => {
+  const requestedDate = (_req.query && _req.query.date) || null;
+  const hasDateFilter =
+    typeof requestedDate === "string" && requestedDate.trim() !== "";
+
+  if (hasDateFilter && !/^\d{4}-\d{2}-\d{2}$/.test(requestedDate)) {
+    return res
+      .status(400)
+      .json({ message: "Invalid date format. Use YYYY-MM-DD." });
+  }
+
   try {
-    const [rows] = await pool.query(
-      `SELECT ps.id, ps.group_id, ps.practice_date, ps.start_time, ps.end_time, ps.location,
+    const baseQuery = `SELECT ps.id, ps.group_id, ps.practice_date, ps.start_time, ps.end_time, ps.location,
               pg.group_name, pg.level
        FROM practice_schedule ps
-       JOIN practice_groups pg ON ps.group_id = pg.id
-       ORDER BY ps.practice_date DESC, ps.start_time ASC`,
-    );
+       JOIN practice_groups pg ON ps.group_id = pg.id`;
+
+    const [rows] = hasDateFilter
+      ? await pool.query(
+          `${baseQuery}
+           WHERE ps.practice_date = ?
+           ORDER BY ps.start_time ASC`,
+          [requestedDate],
+        )
+      : await pool.query(
+          `${baseQuery}
+           ORDER BY ps.practice_date DESC, ps.start_time ASC`,
+        );
+
     return res.json(rows);
   } catch (error) {
     return res
@@ -437,17 +455,25 @@ app.post(
     const { group_id, practice_date, start_time, end_time, location } =
       req.body;
     const repeatWeeksRaw = Number(req.body.repeat_weeks ?? 1);
+    const repeatDaysInput = Array.isArray(req.body.repeat_days)
+      ? req.body.repeat_days
+      : [];
+    const repeatDays = [
+      ...new Set(
+        repeatDaysInput
+          .map((day) => Number(day))
+          .filter((day) => Number.isInteger(day) && day >= 0 && day <= 6),
+      ),
+    ];
     const repeatWeeks = Number.isInteger(repeatWeeksRaw)
       ? Math.min(24, Math.max(1, repeatWeeksRaw))
       : 1;
 
     if (!group_id || !practice_date || !start_time || !end_time) {
-      return res
-        .status(400)
-        .json({
-          message:
-            "group_id, practice_date, start_time, and end_time are required",
-        });
+      return res.status(400).json({
+        message:
+          "group_id, practice_date, start_time, and end_time are required",
+      });
     }
 
     const baseDate = new Date(`${practice_date}T00:00:00`);
@@ -461,20 +487,39 @@ app.post(
 
       const values = [];
       const params = [];
+      const dayOffsets = [];
+
+      if (repeatWeeks > 1 && repeatDays.length) {
+        const baseDay = baseDate.getDay();
+        repeatDays.forEach((selectedDay) => {
+          const offset = (selectedDay - baseDay + 7) % 7;
+          dayOffsets.push(offset);
+        });
+      } else {
+        dayOffsets.push(0);
+      }
 
       for (let i = 0; i < repeatWeeks; i += 1) {
-        const nextDate = new Date(baseDate);
-        nextDate.setDate(baseDate.getDate() + i * 7);
-        const dateValue = nextDate.toISOString().slice(0, 10);
+        dayOffsets.forEach((offset) => {
+          const nextDate = new Date(baseDate);
+          nextDate.setDate(baseDate.getDate() + i * 7 + offset);
+          const dateValue = nextDate.toISOString().slice(0, 10);
 
-        values.push("(?, ?, ?, ?, ?)");
-        params.push(
-          group_id,
-          dateValue,
-          start_time,
-          end_time,
-          location || null,
-        );
+          values.push("(?, ?, ?, ?, ?)");
+          params.push(
+            group_id,
+            dateValue,
+            start_time,
+            end_time,
+            location || null,
+          );
+        });
+      }
+
+      if (!values.length) {
+        return res
+          .status(400)
+          .json({ message: "No sessions to create from selected options" });
       }
 
       const [result] = await connection.query(
@@ -484,7 +529,8 @@ app.post(
       );
 
       const firstId = result.insertId;
-      const lastIdExclusive = firstId + repeatWeeks;
+      const createdCount = values.length;
+      const lastIdExclusive = firstId + createdCount;
 
       const [rows] = await connection.query(
         `SELECT ps.id, ps.group_id, ps.practice_date, ps.start_time, ps.end_time, ps.location,
@@ -527,12 +573,10 @@ app.put(
     }
 
     if (!group_id || !practice_date || !start_time || !end_time) {
-      return res
-        .status(400)
-        .json({
-          message:
-            "group_id, practice_date, start_time, and end_time are required",
-        });
+      return res.status(400).json({
+        message:
+          "group_id, practice_date, start_time, and end_time are required",
+      });
     }
 
     try {
@@ -643,12 +687,10 @@ app.put(
 
       return res.json(rows[0]);
     } catch (error) {
-      return res
-        .status(500)
-        .json({
-          message: "Failed to update swimmer group",
-          error: error.message,
-        });
+      return res.status(500).json({
+        message: "Failed to update swimmer group",
+        error: error.message,
+      });
     }
   },
 );
@@ -807,12 +849,10 @@ app.get(
 
       return res.json(rows);
     } catch (error) {
-      return res
-        .status(500)
-        .json({
-          message: "Failed to fetch linked swimmers",
-          error: error.message,
-        });
+      return res.status(500).json({
+        message: "Failed to fetch linked swimmers",
+        error: error.message,
+      });
     }
   },
 );
