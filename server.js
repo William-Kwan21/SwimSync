@@ -496,6 +496,7 @@ app.post(
   authenticate,
   requireRole("admin", "coach"),
   async (req, res) => {
+    const repeatUntilRemoved = Boolean(req.body.repeat_until_removed);
     const { group_id, practice_date, start_time, end_time, location } =
       req.body;
     const repeatWeeksRaw = Number(req.body.repeat_weeks ?? 1);
@@ -509,9 +510,11 @@ app.post(
           .filter((day) => Number.isInteger(day) && day >= 0 && day <= 6),
       ),
     ];
-    const repeatWeeks = Number.isInteger(repeatWeeksRaw)
-      ? Math.min(24, Math.max(1, repeatWeeksRaw))
-      : 1;
+    const repeatWeeks = repeatUntilRemoved
+      ? 520
+      : Number.isInteger(repeatWeeksRaw)
+        ? Math.min(52, Math.max(1, repeatWeeksRaw))
+        : 1;
 
     if (!group_id || !practice_date || !start_time || !end_time) {
       return res.status(400).json({

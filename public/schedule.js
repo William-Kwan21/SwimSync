@@ -14,9 +14,6 @@ const viewDate = document.getElementById("view-date");
 const btnViewDate = document.getElementById("btn-view-date");
 const btnClearDate = document.getElementById("btn-clear-date");
 
-const scheduleSidebar = document.querySelector(".schedule-sidebar");
-const btnToggleSidebar = document.getElementById("btn-toggle-sidebar");
-
 const sidebarSessionCard = document.getElementById("sidebar-session-card");
 const sidebarSessionForm = document.getElementById("sidebar-session-form");
 const sidebarSelGroup = document.getElementById("sidebar-sel-group");
@@ -25,8 +22,7 @@ const sidebarSelStart = document.getElementById("sidebar-sel-start");
 const sidebarSelEnd = document.getElementById("sidebar-sel-end");
 const sidebarSelLocation = document.getElementById("sidebar-sel-location");
 const sidebarRepeatWeekly = document.getElementById("sidebar-repeat-weekly");
-const sidebarRepeatOptions = document.getElementById("sidebar-repeat-options");
-const sidebarRepeatCount = document.getElementById("sidebar-repeat-count");
+const sidebarRepeatDaysRow = document.getElementById("sidebar-repeat-days-row");
 const sidebarSessionError = document.getElementById("sidebar-session-error");
 const btnSidebarAddSession = document.getElementById("btn-sidebar-add-session");
 
@@ -103,36 +99,6 @@ function toTimeInputValue(t) {
   return String(t).slice(0, 5);
 }
 
-function getSelectedRepeatDays() {
-  const checkboxes = document.querySelectorAll(
-    'input[name="repeat-day"]:checked',
-  );
-  return Array.from(checkboxes)
-    .map((input) => Number(input.value))
-    .filter((value) => Number.isInteger(value) && value >= 0 && value <= 6);
-}
-
-function updateRepeatSummary() {
-  if (!repeatDaysPicker) return;
-  const summary = repeatDaysPicker.querySelector("summary");
-  if (!summary) return;
-
-  const labels = {
-    0: "Sun",
-    1: "Mon",
-    2: "Tue",
-    3: "Wed",
-    4: "Thu",
-    5: "Fri",
-    6: "Sat",
-  };
-  const selected = getSelectedRepeatDays();
-
-  summary.textContent = selected.length
-    ? selected.map((d) => labels[d]).join(", ")
-    : "Select day(s)";
-}
-
 function formatViewDateLabel(dateStr) {
   if (!dateStr) return "Select Date";
   const date = new Date(`${dateStr}T00:00:00`);
@@ -201,7 +167,12 @@ async function loadGroups() {
   try {
     const res = await apiFetch("/api/practice-groups");
     const groups = await res.json();
-    const opts = groups.map(g => `<option value="${g.id}">${escHtml(g.group_name)}</option>`).join("");
+    const opts = groups
+      .map(
+        (g) =>
+          `<option value="${g.id}">${escHtml(g.group_name)} (${escHtml(g.level || "—")})</option>`,
+      )
+      .join("");
     sidebarSelGroup.innerHTML = opts || `<option value="">No groups</option>`;
   } catch {
     sidebarSelGroup.innerHTML = `<option value="">Error loading</option>`;
@@ -212,21 +183,10 @@ async function loadGroups() {
 if (sidebarRepeatWeekly) {
   sidebarRepeatWeekly.addEventListener("change", () => {
     if (sidebarRepeatWeekly.checked) {
-      show(sidebarRepeatOptions);
+      show(sidebarRepeatDaysRow);
     } else {
-      hide(sidebarRepeatOptions);
+      hide(sidebarRepeatDaysRow);
     }
-  });
-}
-
-if (btnToggleSidebar && scheduleSidebar) {
-  btnToggleSidebar.addEventListener("click", () => {
-    scheduleSidebar.classList.toggle("sidebar-collapsed");
-    btnToggleSidebar.textContent = scheduleSidebar.classList.contains(
-      "sidebar-collapsed",
-    )
-      ? "☰"
-      : "✕";
   });
 }
 
@@ -403,7 +363,7 @@ sidebarSessionForm.addEventListener("submit", async (e) => {
         start_time: sidebarSelStart.value,
         end_time: sidebarSelEnd.value,
         location: sidebarSelLocation.value.trim(),
-        repeat_weeks: sidebarRepeatWeekly.checked ? Math.min(24, Math.max(1, Number(sidebarRepeatCount.value) || 1)) : 1,
+        repeat_until_removed: sidebarRepeatWeekly.checked,
         repeat_days: sidebarRepeatWeekly.checked ? getSelectedSidebarRepeatDays() : [],
       }),
     });
@@ -421,8 +381,8 @@ sidebarSessionForm.addEventListener("submit", async (e) => {
   sidebarSelStart.value = savedStart;
   sidebarSelEnd.value = savedEnd;
   sidebarSelLocation.value = savedLocation;
-    sidebarRepeatCount.value = "1";
-    hide(sidebarRepeatOptions);
+  hide(sidebarRepeatDaysRow);
+  sidebarRepeatWeekly.checked = false;
     const created = data.created_count || "Session(s)";
     show(sidebarSessionError);
     sidebarSessionError.classList.remove("error");

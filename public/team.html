@@ -23,15 +23,17 @@
     </div>
   </header>
 
-  <nav class="site-nav">
-    <div class="site-nav-inner">
-      <a href="/app" class="nav-link">&#127968; Dashboard</a>
-      <a href="/schedule" class="nav-link">&#128197; Schedule</a>
-      <a href="/team" class="nav-link active">&#128101; Team</a>
-    </div>
-  </nav>
+  <div class="page-layout">
+    <aside class="site-sidebar-global">
+      <h2 class="sidebar-title">Navigation</h2>
+      <nav class="sidebar-nav">
+        <a href="/app" class="sidebar-link">&#127968; Dashboard</a>
+        <a href="/schedule" class="sidebar-link">&#128197; Schedule</a>
+        <a href="/team" class="sidebar-link active">&#128101; Team</a>
+      </nav>
+    </aside>
 
-  <main>
+    <main class="page-main">
     <div id="team-loading" class="state-msg">Loading team data&hellip;</div>
     <div id="team-error" class="state-msg error hidden"></div>
 
@@ -108,7 +110,8 @@
         </table>
       </div>
     </section>
-  </main>
+    </main>
+  </div>
 
   <script src="team.js"></script>
 </body>

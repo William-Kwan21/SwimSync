@@ -25,30 +25,26 @@
       </div>
     </header>
 
-    <nav class="site-nav">
-      <div class="site-nav-inner">
-        <a href="/app" class="nav-link">&#127968; Dashboard</a>
-        <a href="/schedule" class="nav-link active">&#128197; Schedule</a>
-        <a href="/team" class="nav-link">&#128101; Team</a>
-      </div>
-    </nav>
+    <div class="page-layout">
+      <aside class="site-sidebar-global">
+        <h2 class="sidebar-title">Navigation</h2>
+        <nav class="sidebar-nav">
+          <a href="/app" class="sidebar-link">&#127968; Dashboard</a>
+          <a href="/schedule" class="sidebar-link active">&#128197; Schedule</a>
+          <a href="/team" class="sidebar-link">&#128101; Team</a>
+        </nav>
+      </aside>
 
-    <div class="schedule-layout">
-      <!-- Side builder -->
-      <aside class="schedule-sidebar">
-        <div class="sidebar-header">
-          <h3>Builder</h3>
-          <button class="btn btn-sm btn-icon" id="btn-toggle-sidebar" aria-label="Toggle sidebar">✕</button>
-        </div>
-
-        <!-- New Session -->
-        <div class="sidebar-section" id="sidebar-session-card">
-          <h4>New Session(s)</h4>
-          <form id="sidebar-session-form" autocomplete="off">
+      <main class="page-main">
+        <section class="card hidden" id="sidebar-session-card">
+          <div class="card-header">
+            <h2>Schedule Builder</h2>
+          </div>
+          <form id="sidebar-session-form" class="form-grid" autocomplete="off">
             <div class="form-row">
               <label for="sidebar-sel-group">Group</label>
               <select id="sidebar-sel-group" required>
-                <option value="">Loading groups…</option>
+                <option value="">Loading groups&hellip;</option>
               </select>
             </div>
             <div class="form-row">
@@ -63,43 +59,40 @@
               <label for="sidebar-sel-end">End Time</label>
               <input id="sidebar-sel-end" type="time" required />
             </div>
-            <div class="form-row">
+            <div class="form-row form-row-full">
               <label for="sidebar-sel-location">Location</label>
               <input id="sidebar-sel-location" type="text" placeholder="Main Pool" />
             </div>
-            <div class="repeat-group">
+            <div class="form-row form-row-full repeat-group">
               <label class="checkbox-row" for="sidebar-repeat-weekly">
                 <input id="sidebar-repeat-weekly" type="checkbox" />
-                <span>Repeat</span>
+                <span>Repeat weekly until removed by admin</span>
               </label>
-              <div class="repeat-options hidden" id="sidebar-repeat-options">
-                <div class="form-row">
-                  <label for="sidebar-repeat-count">Weeks</label>
-                  <input id="sidebar-repeat-count" type="number" min="1" max="24" value="1" />
-                </div>
-                <div class="form-row">
-                  <label>Days of Week</label>
-                  <div class="day-picker-inline">
-                    <label class="day-checkbox"><input type="checkbox" name="sidebar-repeat-day" value="1" /><span>M</span></label>
-                    <label class="day-checkbox"><input type="checkbox" name="sidebar-repeat-day" value="2" /><span>T</span></label>
-                    <label class="day-checkbox"><input type="checkbox" name="sidebar-repeat-day" value="3" /><span>W</span></label>
-                    <label class="day-checkbox"><input type="checkbox" name="sidebar-repeat-day" value="4" /><span>Th</span></label>
-                    <label class="day-checkbox"><input type="checkbox" name="sidebar-repeat-day" value="5" /><span>F</span></label>
-                    <label class="day-checkbox"><input type="checkbox" name="sidebar-repeat-day" value="6" /><span>Sa</span></label>
-                    <label class="day-checkbox"><input type="checkbox" name="sidebar-repeat-day" value="0" /><span>Su</span></label>
-                  </div>
-                </div>
+            </div>
+            <div class="form-row form-row-full hidden" id="sidebar-repeat-days-row">
+              <label>Days of Week</label>
+              <div class="day-picker-inline">
+                <label class="day-checkbox"><input type="checkbox" name="sidebar-repeat-day" value="1" /><span>M</span></label>
+                <label class="day-checkbox"><input type="checkbox" name="sidebar-repeat-day" value="2" /><span>T</span></label>
+                <label class="day-checkbox"><input type="checkbox" name="sidebar-repeat-day" value="3" /><span>W</span></label>
+                <label class="day-checkbox"><input type="checkbox" name="sidebar-repeat-day" value="4" /><span>Th</span></label>
+                <label class="day-checkbox"><input type="checkbox" name="sidebar-repeat-day" value="5" /><span>F</span></label>
+                <label class="day-checkbox"><input type="checkbox" name="sidebar-repeat-day" value="6" /><span>Sa</span></label>
+                <label class="day-checkbox"><input type="checkbox" name="sidebar-repeat-day" value="0" /><span>Su</span></label>
               </div>
             </div>
-            <div id="sidebar-session-error" class="state-msg error hidden"></div>
-            <button class="btn btn-primary btn-sm btn-block" type="submit" id="btn-sidebar-add-session">Add Session(s)</button>
+            <div id="sidebar-session-error" class="state-msg error hidden form-row-full"></div>
+            <div class="form-row form-row-full">
+              <button class="btn btn-primary" type="submit" id="btn-sidebar-add-session">Add Session(s)</button>
+            </div>
           </form>
-        </div>
+        </section>
 
-        <!-- New Group -->
-        <div class="sidebar-section hidden" id="sidebar-group-card">
-          <h4>New Group</h4>
-          <form id="sidebar-group-form" autocomplete="off">
+        <section class="card hidden" id="sidebar-group-card">
+          <div class="card-header">
+            <h2>Create Practice Group</h2>
+          </div>
+          <form id="sidebar-group-form" class="form-grid" autocomplete="off">
             <div class="form-row">
               <label for="sidebar-group-name">Name</label>
               <input id="sidebar-group-name" type="text" placeholder="e.g. Junior 3" required />
@@ -108,25 +101,24 @@
               <label for="sidebar-group-level">Level</label>
               <input id="sidebar-group-level" type="text" placeholder="e.g. Advanced" />
             </div>
-            <div id="sidebar-group-error" class="state-msg error hidden"></div>
-            <button class="btn btn-primary btn-sm btn-block" type="submit" id="btn-sidebar-add-group">Create</button>
+            <div id="sidebar-group-error" class="state-msg error hidden form-row-full"></div>
+            <div class="form-row form-row-full">
+              <button class="btn btn-primary" type="submit" id="btn-sidebar-add-group">Create Group</button>
+            </div>
           </form>
-        </div>
-      </aside>
+        </section>
 
-      <!-- Main content -->
-      <main class="schedule-content">
         <!-- Schedule table -->
         <section class="card">
           <div class="card-header">
             <h2>Upcoming Practice Sessions</h2>
             <div class="card-header-actions">
               <div class="date-button-wrap">
-                <button class="btn btn-secondary btn-sm" id="btn-view-date" type="button">Select Date</button>
+                <button class="btn btn-secondary" id="btn-view-date" type="button">Select Date</button>
                 <input id="view-date" class="date-button-input" type="date" aria-label="Filter by day" />
               </div>
-              <button class="btn btn-secondary btn-sm" id="btn-clear-date" type="button">All Days</button>
-              <button class="btn btn-secondary btn-sm" id="btn-refresh">↻ Refresh</button>
+              <button class="btn btn-secondary" id="btn-clear-date" type="button">All Days</button>
+              <button class="btn btn-secondary" id="btn-refresh">&#8635; Refresh</button>
             </div>
           </div>
         <div id="schedule-loading" class="state-msg">
@@ -154,7 +146,7 @@
           </table>
         </div>
       </section>
-        </main>
+      </main>
     </div>
 
     <script src="schedule.js"></script>
