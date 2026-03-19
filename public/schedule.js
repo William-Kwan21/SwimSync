@@ -14,24 +14,28 @@ const viewDate = document.getElementById("view-date");
 const btnViewDate = document.getElementById("btn-view-date");
 const btnClearDate = document.getElementById("btn-clear-date");
 
-const createSessionCard = document.getElementById("create-session-card");
-const sessionForm = document.getElementById("session-form");
-const selGroup = document.getElementById("sel-group");
-const selDate = document.getElementById("sel-date");
-const selStart = document.getElementById("sel-start");
-const selEnd = document.getElementById("sel-end");
-const selLocation = document.getElementById("sel-location");
-const repeatWeekly = document.getElementById("repeat-weekly");
-const repeatCount = document.getElementById("repeat-count");
-const repeatDaysPicker = document.getElementById("repeat-days-picker");
-const sessionError = document.getElementById("session-error");
-const btnAddSession = document.getElementById("btn-add-session");
+const scheduleSidebar = document.querySelector(".schedule-sidebar");
+const btnToggleSidebar = document.getElementById("btn-toggle-sidebar");
 
-const createGroupCard = document.getElementById("create-group-card");
-const groupForm = document.getElementById("group-form");
-const groupName = document.getElementById("group-name");
-const groupLevel = document.getElementById("group-level");
-const groupError = document.getElementById("group-error");
+const sidebarSessionCard = document.getElementById("sidebar-session-card");
+const sidebarSessionForm = document.getElementById("sidebar-session-form");
+const sidebarSelGroup = document.getElementById("sidebar-sel-group");
+const sidebarSelDate = document.getElementById("sidebar-sel-date");
+const sidebarSelStart = document.getElementById("sidebar-sel-start");
+const sidebarSelEnd = document.getElementById("sidebar-sel-end");
+const sidebarSelLocation = document.getElementById("sidebar-sel-location");
+const sidebarRepeatWeekly = document.getElementById("sidebar-repeat-weekly");
+const sidebarRepeatOptions = document.getElementById("sidebar-repeat-options");
+const sidebarRepeatCount = document.getElementById("sidebar-repeat-count");
+const sidebarSessionError = document.getElementById("sidebar-session-error");
+const btnSidebarAddSession = document.getElementById("btn-sidebar-add-session");
+
+const sidebarGroupCard = document.getElementById("sidebar-group-card");
+const sidebarGroupForm = document.getElementById("sidebar-group-form");
+const sidebarGroupName = document.getElementById("sidebar-group-name");
+const sidebarGroupLevel = document.getElementById("sidebar-group-level");
+const sidebarGroupError = document.getElementById("sidebar-group-error");
+const btnSidebarAddGroup = document.getElementById("btn-sidebar-add-group");
 
 let currentUser = null;
 let sessionsById = new Map();
@@ -197,17 +201,33 @@ async function loadGroups() {
   try {
     const res = await apiFetch("/api/practice-groups");
     const groups = await res.json();
-    selGroup.innerHTML = groups.length
-      ? groups
-          .map(
-            (g) =>
-              `<option value="${g.id}">${escHtml(g.group_name)} (${escHtml(g.level || "—")})</option>`,
-          )
-          .join("")
-      : `<option value="">No groups yet — create one below</option>`;
+    const opts = groups.map(g => `<option value="${g.id}">${escHtml(g.group_name)}</option>`).join("");
+    sidebarSelGroup.innerHTML = opts || `<option value="">No groups</option>`;
   } catch {
-    selGroup.innerHTML = `<option value="">Failed to load groups</option>`;
+    sidebarSelGroup.innerHTML = `<option value="">Error loading</option>`;
   }
+}
+
+/* ── repeat and sidebar handlers ── */
+if (sidebarRepeatWeekly) {
+  sidebarRepeatWeekly.addEventListener("change", () => {
+    if (sidebarRepeatWeekly.checked) {
+      show(sidebarRepeatOptions);
+    } else {
+      hide(sidebarRepeatOptions);
+    }
+  });
+}
+
+if (btnToggleSidebar && scheduleSidebar) {
+  btnToggleSidebar.addEventListener("click", () => {
+    scheduleSidebar.classList.toggle("sidebar-collapsed");
+    btnToggleSidebar.textContent = scheduleSidebar.classList.contains(
+      "sidebar-collapsed",
+    )
+      ? "☰"
+      : "✕";
+  });
 }
 
 /* ── load schedule ── */
@@ -356,82 +376,107 @@ async function editSession(sessionId) {
   }
 }
 
-/* ── add session ── */
-sessionForm.addEventListener("submit", async (e) => {
+/* ── sidebar session form ── */
+sidebarSessionForm.addEventListener("submit", async (e) => {
   e.preventDefault();
-  hide(sessionError);
-  btnAddSession.disabled = true;
-  btnAddSession.textContent = "Adding…";
+  hide(sidebarSessionError);
+  btnSidebarAddSession.disabled = true;
+  btnSidebarAddSession.textContent = "Adding…";
+
+  const savedGroup = sidebarSelGroup.value;
+  const savedStart = sidebarSelStart.value;
+  const savedEnd = sidebarSelEnd.value;
+  const savedLocation = sidebarSelLocation.value;
 
   try {
+    function getSelectedSidebarRepeatDays() {
+      const checks = document.querySelectorAll('input[name="sidebar-repeat-day"]:checked');
+      return Array.from(checks).map(c => Number(c.value)).filter(v => v >= 0 && v <= 6);
+    }
+
     const res = await apiFetch("/api/schedule", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        group_id: Number(selGroup.value),
-        practice_date: selDate.value,
-        start_time: selStart.value,
-        end_time: selEnd.value,
-        location: selLocation.value.trim(),
-        repeat_weeks: repeatWeekly.checked
-          ? Math.min(
-              24,
-              Math.max(1, Number.parseInt(repeatCount.value, 10) || 1),
-            )
-          : 1,
-        repeat_days: repeatWeekly.checked ? getSelectedRepeatDays() : [],
+        group_id: Number(sidebarSelGroup.value),
+        practice_date: sidebarSelDate.value,
+        start_time: sidebarSelStart.value,
+        end_time: sidebarSelEnd.value,
+        location: sidebarSelLocation.value.trim(),
+        repeat_weeks: sidebarRepeatWeekly.checked ? Math.min(24, Math.max(1, Number(sidebarRepeatCount.value) || 1)) : 1,
+        repeat_days: sidebarRepeatWeekly.checked ? getSelectedSidebarRepeatDays() : [],
       }),
     });
 
     const data = await safeJson(res);
     if (!res.ok) {
-      showErr(sessionError, (data && data.message) || `Failed (${res.status})`);
+      const msg = (data && data.message) || "Failed to add session";
+      show(sidebarSessionError);
+      sidebarSessionError.textContent = msg;
       return;
     }
 
-    sessionForm.reset();
-    repeatCount.value = "1";
-    updateRepeatSummary();
+    sidebarSessionForm.reset();
+  sidebarSelGroup.value = savedGroup;
+  sidebarSelStart.value = savedStart;
+  sidebarSelEnd.value = savedEnd;
+  sidebarSelLocation.value = savedLocation;
+    sidebarRepeatCount.value = "1";
+    hide(sidebarRepeatOptions);
+    const created = data.created_count || "Session(s)";
+    show(sidebarSessionError);
+    sidebarSessionError.classList.remove("error");
+    sidebarSessionError.classList.add("info");
+    sidebarSessionError.textContent = `Added ${created} session(s)!`;
     await loadSchedule();
   } catch (err) {
-    showErr(sessionError, `Network error: ${err.message}`);
+    show(sidebarSessionError);
+    sidebarSessionError.classList.add("error");
+    sidebarSessionError.textContent = `Network error: ${err.message}`;
   } finally {
-    btnAddSession.disabled = false;
-    btnAddSession.textContent = "Add Session";
+    btnSidebarAddSession.disabled = false;
+    btnSidebarAddSession.textContent = "Add Session(s)";
   }
 });
 
-/* ── add group ── */
-groupForm.addEventListener("submit", async (e) => {
+/* ── sidebar group form ── */
+sidebarGroupForm.addEventListener("submit", async (e) => {
   e.preventDefault();
-  hide(groupError);
-  const btn = document.getElementById("btn-add-group");
-  btn.disabled = true;
-  btn.textContent = "Creating…";
+  hide(sidebarGroupError);
+  btnSidebarAddGroup.disabled = true;
+  btnSidebarAddGroup.textContent = "Creating…";
 
   try {
     const res = await apiFetch("/api/practice-groups", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        group_name: groupName.value.trim(),
-        level: groupLevel.value.trim(),
+        group_name: sidebarGroupName.value.trim(),
+        level: sidebarGroupLevel.value.trim(),
       }),
     });
 
     const data = await safeJson(res);
     if (!res.ok) {
-      showErr(groupError, (data && data.message) || `Failed (${res.status})`);
+      const msg = (data && data.message) || "Failed";
+      show(sidebarGroupError);
+      sidebarGroupError.textContent = msg;
       return;
     }
 
-    groupForm.reset();
+    sidebarGroupForm.reset();
+    show(sidebarGroupError);
+    sidebarGroupError.classList.remove("error");
+    sidebarGroupError.classList.add("info");
+    sidebarGroupError.textContent = "Group created!";
     await loadGroups();
   } catch (err) {
-    showErr(groupError, `Network error: ${err.message}`);
+    show(sidebarGroupError);
+    sidebarGroupError.classList.add("error");
+    sidebarGroupError.textContent = `Network error: ${err.message}`;
   } finally {
-    btn.disabled = false;
-    btn.textContent = "Create Group";
+    btnSidebarAddGroup.disabled = false;
+    btnSidebarAddGroup.textContent = "Create";
   }
 });
 
@@ -447,9 +492,6 @@ btnClearDate.addEventListener("click", () => {
   loadSchedule();
 });
 
-if (repeatDaysPicker) {
-  repeatDaysPicker.addEventListener("change", updateRepeatSummary);
-}
 btnLogout.addEventListener("click", redirectToLogin);
 
 /* ── init ── */
@@ -479,16 +521,17 @@ async function init() {
 
   const canEdit = currentUser.role === "admin" || currentUser.role === "coach";
   if (canEdit) {
-    show(createSessionCard);
-    show(createGroupCard);
+    show(sidebarSessionCard);
+    show(sidebarGroupCard);
     schedActionHeading.textContent = "Action";
   } else {
+    hide(sidebarSessionCard);
+    hide(sidebarGroupCard);
     schedActionHeading.textContent = "Access";
   }
 
   await checkHealth();
   await loadGroups();
-  updateRepeatSummary();
   updateViewDateLabel();
   await loadSchedule();
 }
