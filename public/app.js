@@ -13,6 +13,10 @@ const roleDescription = document.getElementById("role-description");
 const userRoleBadge = document.getElementById("user-role-badge");
 const usersSectionTitle = document.getElementById("users-section-title");
 const actionColumnHeading = document.getElementById("action-column-heading");
+const addUserCard = document.getElementById("add-user-card");
+const addUserForm = document.getElementById("add-user-form");
+const addUserStatus = document.getElementById("add-user-status");
+const addUserButton = document.getElementById("btn-add-user");
 
 let currentUser = null;
 
@@ -49,6 +53,16 @@ function escHtml(str) {
 function showError(el, msg) {
   el.textContent = msg;
   show(el);
+}
+
+function showStatus(el, msg, type = "info") {
+  el.textContent = msg;
+  el.classList.remove("hidden", "error", "info");
+  if (type === "error") {
+    el.classList.add("error");
+  } else {
+    el.classList.add("info");
+  }
 }
 
 function formatDate(iso) {
@@ -98,15 +112,37 @@ function applyRoleUI() {
   userRoleBadge.className = `badge role-badge role-${currentUser.role}`;
 
   if (currentUser.role === "admin") {
+    show(addUserCard);
     usersSectionTitle.textContent = "All Users in Database";
     actionColumnHeading.textContent = "Action";
   } else if (currentUser.role === "coach") {
+    hide(addUserCard);
     usersSectionTitle.textContent = "Team User Directory";
     actionColumnHeading.textContent = "Access";
   } else {
+    hide(addUserCard);
     usersSectionTitle.textContent = "My Account";
     actionColumnHeading.textContent = "Access";
   }
+}
+
+function renderUserRow(user) {
+  const canDelete = currentUser.role === "admin" && user.id !== currentUser.id;
+  const actionLabel = canDelete
+    ? `<button class="btn btn-danger" data-id="${user.id}" aria-label="Remove ${escHtml(user.name)}">Remove</button>`
+    : '<span class="muted-inline">View only</span>';
+
+  const tr = document.createElement("tr");
+  tr.dataset.id = user.id;
+  tr.innerHTML = `
+    <td>${user.id}</td>
+    <td>${escHtml(user.name)}</td>
+    <td>${escHtml(user.email)}</td>
+    <td><span class="table-role role-pill role-${escHtml(user.role)}">${escHtml(user.role)}</span></td>
+    <td>${formatDate(user.created_at)}</td>
+    <td>${actionLabel}</td>`;
+
+  return tr;
 }
 
 async function fetchCurrentUser() {
@@ -155,21 +191,7 @@ async function loadUsers() {
     }
 
     users.forEach((user) => {
-      const canDelete = currentUser.role === "admin" && user.id !== currentUser.id;
-      const actionLabel = canDelete
-        ? `<button class="btn btn-danger" data-id="${user.id}" aria-label="Remove ${escHtml(user.name)}">Remove</button>`
-        : '<span class="muted-inline">View only</span>';
-
-      const tr = document.createElement("tr");
-      tr.dataset.id = user.id;
-      tr.innerHTML = `
-        <td>${user.id}</td>
-        <td>${escHtml(user.name)}</td>
-        <td>${escHtml(user.email)}</td>
-        <td><span class="table-role role-pill role-${escHtml(user.role)}">${escHtml(user.role)}</span></td>
-        <td>${formatDate(user.created_at)}</td>
-        <td>${actionLabel}</td>`;
-      usersTbody.appendChild(tr);
+      usersTbody.appendChild(renderUserRow(user));
     });
 
     hide(usersLoading);
@@ -225,6 +247,69 @@ usersTbody.addEventListener("click", async (e) => {
 
 btnRefresh.addEventListener("click", loadUsers);
 btnLogout.addEventListener("click", redirectToLogin);
+
+if (addUserForm) {
+  addUserForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+
+    const formData = new FormData(addUserForm);
+    const payload = {
+      name: String(formData.get("name") || "").trim(),
+      email: String(formData.get("email") || "").trim(),
+      password: String(formData.get("password") || ""),
+      role: String(formData.get("role") || "").trim(),
+    };
+
+    if (!payload.name || !payload.email || !payload.password || !payload.role) {
+      showStatus(addUserStatus, "All fields are required.", "error");
+      return;
+    }
+
+    if (payload.password.length < 8) {
+      showStatus(addUserStatus, "Password must be at least 8 characters.", "error");
+      return;
+    }
+
+    addUserButton.disabled = true;
+    addUserButton.textContent = "Adding…";
+    showStatus(addUserStatus, "Creating user record...", "info");
+
+    try {
+      const res = await apiFetch("/api/users", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      const data = await safeJson(res);
+
+      if (!res.ok) {
+        showStatus(
+          addUserStatus,
+          `Failed to add user: ${(data && data.message) || res.status}`,
+          "error",
+        );
+        return;
+      }
+
+      addUserForm.reset();
+      showStatus(addUserStatus, "User added successfully.", "info");
+
+      if (data && data.id) {
+        hide(usersEmpty);
+        show(usersTable);
+        usersTbody.appendChild(renderUserRow(data));
+      } else {
+        await loadUsers();
+      }
+    } catch (err) {
+      showStatus(addUserStatus, `Network error: ${err.message}`, "error");
+    } finally {
+      addUserButton.disabled = false;
+      addUserButton.textContent = "Add User";
+    }
+  });
+}
 
 async function init() {
   const token = getToken();

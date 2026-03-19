@@ -286,27 +286,71 @@ app.post("/api/users", authenticate, requireRole("admin"), async (req, res) => {
     return res.status(400).json({ message: "Invalid role" });
   }
 
+  if (password.length < 8) {
+    return res
+      .status(400)
+      .json({ message: "Password must be at least 8 characters" });
+  }
+
+  const cleanName = name.trim();
+  const cleanEmail = email.trim().toLowerCase();
+
+  if (!cleanName || !cleanEmail) {
+    return res.status(400).json({ message: "name and email cannot be blank" });
+  }
+
+  const connection = await pool.getConnection();
+
   try {
+    await connection.beginTransaction();
+
     const passwordHash = await bcrypt.hash(password, 10);
 
-    const [result] = await pool.query(
+    const [result] = await connection.query(
       "INSERT INTO users (name, email, password_hash, role) VALUES (?, ?, ?, ?)",
-      [name.trim(), email.trim(), passwordHash, role],
+      [cleanName, cleanEmail, passwordHash, role],
     );
 
-    const [rows] = await pool.query(
+    if (role === "swimmer") {
+      await connection.query(
+        "INSERT INTO swimmers (user_id, date_of_birth, gender, skill_level) VALUES (?, NULL, NULL, NULL)",
+        [result.insertId],
+      );
+    }
+
+    if (role === "parent") {
+      await connection.query(
+        "INSERT INTO parents (user_id, phone, emergency_contact) VALUES (?, NULL, NULL)",
+        [result.insertId],
+      );
+    }
+
+    if (role === "coach" || role === "admin") {
+      await connection.query(
+        "INSERT INTO coaches (user_id, certification, years_experience) VALUES (?, NULL, NULL)",
+        [result.insertId],
+      );
+    }
+
+    const [rows] = await connection.query(
       "SELECT id, name, email, role, created_at FROM users WHERE id = ?",
       [result.insertId],
     );
 
+    await connection.commit();
+
     return res.status(201).json(rows[0]);
   } catch (error) {
+    await connection.rollback();
+
     if (error.code === "ER_DUP_ENTRY") {
       return res.status(409).json({ message: "Email already exists" });
     }
     return res
       .status(500)
       .json({ message: "Failed to add user", error: error.message });
+  } finally {
+    connection.release();
   }
 });
 

@@ -53,6 +53,45 @@
       <div id="role-description" class="state-msg info">Checking role permissions&hellip;</div>
     </section>
 
+    <section id="add-user-card" class="card hidden">
+      <div class="card-header">
+        <h2>Add User</h2>
+      </div>
+
+      <form id="add-user-form" class="form-grid" autocomplete="off">
+        <div class="form-row">
+          <label for="new-user-name">Name</label>
+          <input id="new-user-name" name="name" type="text" required />
+        </div>
+
+        <div class="form-row">
+          <label for="new-user-email">Email</label>
+          <input id="new-user-email" name="email" type="email" required />
+        </div>
+
+        <div class="form-row">
+          <label for="new-user-password">Password</label>
+          <input id="new-user-password" name="password" type="password" minlength="8" required />
+        </div>
+
+        <div class="form-row">
+          <label for="new-user-role">Role</label>
+          <select id="new-user-role" name="role" required>
+            <option value="swimmer">Swimmer</option>
+            <option value="parent">Parent</option>
+            <option value="coach">Coach</option>
+            <option value="admin">Admin</option>
+          </select>
+        </div>
+
+        <div class="form-row form-row-full">
+          <button class="btn btn-primary" id="btn-add-user" type="submit">Add User</button>
+        </div>
+      </form>
+
+      <div id="add-user-status" class="state-msg hidden"></div>
+    </section>
+
     <!-- Phase 1 – retrieve and display dummy records -->
     <section class="card">
       <div class="card-header">
