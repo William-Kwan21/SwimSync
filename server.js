@@ -393,6 +393,27 @@ app.get("/team", (_req, res) => {
 });
 
 /* ── practice groups ── */
+app.get(
+  "/api/coaches",
+  authenticate,
+  requireRole("admin", "coach"),
+  async (_req, res) => {
+    try {
+      const [rows] = await pool.query(
+        `SELECT c.id, c.user_id, u.name, u.email
+         FROM coaches c
+         JOIN users u ON c.user_id = u.id
+         ORDER BY u.name ASC`,
+      );
+      return res.json(rows);
+    } catch (error) {
+      return res
+        .status(500)
+        .json({ message: "Failed to fetch coaches", error: error.message });
+    }
+  },
+);
+
 app.get("/api/practice-groups", authenticate, async (_req, res) => {
   try {
     const [rows] = await pool.query(
@@ -418,8 +439,16 @@ app.post(
   requireRole("admin", "coach"),
   async (req, res) => {
     const { group_name, level } = req.body;
+    const requestedCoachId =
+      req.body.coach_id === null || req.body.coach_id === undefined
+        ? null
+        : Number(req.body.coach_id);
     if (!group_name) {
       return res.status(400).json({ message: "group_name is required" });
+    }
+
+    if (requestedCoachId !== null && Number.isNaN(requestedCoachId)) {
+      return res.status(400).json({ message: "coach_id must be a number" });
     }
 
     let coachId = null;
@@ -428,7 +457,28 @@ app.post(
         "SELECT id FROM coaches WHERE user_id = ? LIMIT 1",
         [req.user.sub],
       );
-      if (rows.length) coachId = rows[0].id;
+      if (!rows.length) {
+        return res.status(400).json({ message: "Coach profile not found" });
+      }
+
+      coachId = rows[0].id;
+      if (requestedCoachId !== null && requestedCoachId !== coachId) {
+        return res.status(403).json({
+          message: "Coaches can only assign themselves to a practice group",
+        });
+      }
+    } else {
+      coachId = requestedCoachId;
+    }
+
+    if (coachId !== null) {
+      const [coachRows] = await pool.query(
+        "SELECT id FROM coaches WHERE id = ? LIMIT 1",
+        [coachId],
+      );
+      if (!coachRows.length) {
+        return res.status(404).json({ message: "Coach not found" });
+      }
     }
 
     try {
@@ -449,6 +499,85 @@ app.post(
       return res
         .status(500)
         .json({ message: "Failed to create group", error: error.message });
+    }
+  },
+);
+
+app.put(
+  "/api/practice-groups/:id/coach",
+  authenticate,
+  requireRole("admin", "coach"),
+  async (req, res) => {
+    const groupId = Number(req.params.id);
+    const requestedCoachId =
+      req.body.coach_id === null || req.body.coach_id === undefined
+        ? null
+        : Number(req.body.coach_id);
+
+    if (Number.isNaN(groupId)) {
+      return res.status(400).json({ message: "Invalid group id" });
+    }
+    if (requestedCoachId !== null && Number.isNaN(requestedCoachId)) {
+      return res.status(400).json({ message: "coach_id must be a number" });
+    }
+
+    let coachId = requestedCoachId;
+    if (req.user.role === "coach") {
+      const [selfCoachRows] = await pool.query(
+        "SELECT id FROM coaches WHERE user_id = ? LIMIT 1",
+        [req.user.sub],
+      );
+
+      if (!selfCoachRows.length) {
+        return res.status(400).json({ message: "Coach profile not found" });
+      }
+
+      if (coachId !== null && coachId !== selfCoachRows[0].id) {
+        return res.status(403).json({
+          message: "Coaches can only assign themselves to a practice group",
+        });
+      }
+
+      coachId = selfCoachRows[0].id;
+    }
+
+    if (coachId !== null) {
+      const [coachRows] = await pool.query(
+        "SELECT id FROM coaches WHERE id = ? LIMIT 1",
+        [coachId],
+      );
+      if (!coachRows.length) {
+        return res.status(404).json({ message: "Coach not found" });
+      }
+    }
+
+    try {
+      const [updateResult] = await pool.query(
+        "UPDATE practice_groups SET coach_id = ? WHERE id = ?",
+        [coachId, groupId],
+      );
+
+      if (updateResult.affectedRows === 0) {
+        return res.status(404).json({ message: "Practice group not found" });
+      }
+
+      const [rows] = await pool.query(
+        `SELECT pg.id, pg.group_name, pg.level,
+                u.name AS coach_name
+         FROM practice_groups pg
+         LEFT JOIN coaches c ON pg.coach_id = c.id
+         LEFT JOIN users u ON c.user_id = u.id
+         WHERE pg.id = ?
+         LIMIT 1`,
+        [groupId],
+      );
+
+      return res.json(rows[0]);
+    } catch (error) {
+      return res.status(500).json({
+        message: "Failed to assign coach to practice group",
+        error: error.message,
+      });
     }
   },
 );

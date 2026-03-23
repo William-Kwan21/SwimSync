@@ -37,6 +37,13 @@ const sidebarGroupCard = document.getElementById("sidebar-group-card");
 const sidebarGroupForm = document.getElementById("sidebar-group-form");
 const sidebarGroupName = document.getElementById("sidebar-group-name");
 const sidebarGroupLevel = document.getElementById("sidebar-group-level");
+const sidebarGroupCoach = document.getElementById("sidebar-group-coach");
+const sidebarAssignCoachForm = document.getElementById(
+  "sidebar-assign-coach-form",
+);
+const sidebarAssignGroup = document.getElementById("sidebar-assign-group");
+const sidebarAssignCoach = document.getElementById("sidebar-assign-coach");
+const btnAssignCoach = document.getElementById("btn-assign-coach");
 const sidebarGroupError = document.getElementById("sidebar-group-error");
 const btnSidebarAddGroup = document.getElementById("btn-sidebar-add-group");
 
@@ -420,8 +427,56 @@ async function loadGroups() {
       )
       .join("");
     sidebarSelGroup.innerHTML = opts || `<option value="">No groups</option>`;
+
+    if (sidebarAssignGroup) {
+      const assignOpts = groups
+        .map(
+          (g) =>
+            `<option value="${g.id}">${escHtml(g.group_name)} (${escHtml(g.level || "—")})</option>`,
+        )
+        .join("");
+      sidebarAssignGroup.innerHTML =
+        `<option value="">Select group</option>${assignOpts}`;
+    }
   } catch {
     sidebarSelGroup.innerHTML = `<option value="">Error loading</option>`;
+    if (sidebarAssignGroup) {
+      sidebarAssignGroup.innerHTML = `<option value="">Error loading groups</option>`;
+    }
+  }
+}
+
+async function loadCoaches() {
+  if (!sidebarGroupCoach && !sidebarAssignCoach) {
+    return;
+  }
+
+  try {
+    const res = await apiFetch("/api/coaches");
+    const coaches = await res.json();
+    const coachOptions = coaches
+      .map(
+        (c) =>
+          `<option value="${c.id}">${escHtml(c.name)} (${escHtml(c.email)})</option>`,
+      )
+      .join("");
+
+    if (sidebarGroupCoach) {
+      sidebarGroupCoach.innerHTML =
+        `<option value="">Unassigned</option>${coachOptions}`;
+    }
+
+    if (sidebarAssignCoach) {
+      sidebarAssignCoach.innerHTML =
+        `<option value="">Select coach</option>${coachOptions}`;
+    }
+  } catch {
+    if (sidebarGroupCoach) {
+      sidebarGroupCoach.innerHTML = `<option value="">Error loading coaches</option>`;
+    }
+    if (sidebarAssignCoach) {
+      sidebarAssignCoach.innerHTML = `<option value="">Error loading coaches</option>`;
+    }
   }
 }
 
@@ -737,6 +792,9 @@ sidebarGroupForm.addEventListener("submit", async (e) => {
       body: JSON.stringify({
         group_name: sidebarGroupName.value.trim(),
         level: sidebarGroupLevel.value.trim(),
+        coach_id: sidebarGroupCoach && sidebarGroupCoach.value
+          ? Number(sidebarGroupCoach.value)
+          : null,
       }),
     });
 
@@ -754,6 +812,7 @@ sidebarGroupForm.addEventListener("submit", async (e) => {
     sidebarGroupError.classList.add("info");
     sidebarGroupError.textContent = "Group created!";
     await loadGroups();
+    await loadCoaches();
   } catch (err) {
     show(sidebarGroupError);
     sidebarGroupError.classList.add("error");
@@ -763,6 +822,50 @@ sidebarGroupForm.addEventListener("submit", async (e) => {
     btnSidebarAddGroup.textContent = "Create";
   }
 });
+
+if (sidebarAssignCoachForm) {
+  sidebarAssignCoachForm.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    hide(sidebarGroupError);
+    if (btnAssignCoach) {
+      btnAssignCoach.disabled = true;
+      btnAssignCoach.textContent = "Assigning…";
+    }
+
+    try {
+      const response = await apiFetch(
+        `/api/practice-groups/${encodeURIComponent(sidebarAssignGroup.value)}/coach`,
+        {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ coach_id: Number(sidebarAssignCoach.value) }),
+        },
+      );
+
+      const data = await safeJson(response);
+      if (!response.ok) {
+        showErr(
+          sidebarGroupError,
+          (data && data.message) || "Failed to assign coach",
+        );
+        return;
+      }
+
+      show(sidebarGroupError);
+      sidebarGroupError.classList.remove("error");
+      sidebarGroupError.classList.add("info");
+      sidebarGroupError.textContent = `Assigned ${data && data.coach_name ? data.coach_name : "coach"} to ${data && data.group_name ? data.group_name : "group"}.`;
+      await loadGroups();
+    } catch (err) {
+      showErr(sidebarGroupError, `Network error: ${err.message}`);
+    } finally {
+      if (btnAssignCoach) {
+        btnAssignCoach.disabled = false;
+        btnAssignCoach.textContent = "Assign Coach";
+      }
+    }
+  });
+}
 
 btnRefresh.addEventListener("click", () => loadSchedule());
 btnViewDate.addEventListener("click", openViewDateCalendar);
@@ -916,6 +1019,7 @@ async function init() {
 
   await checkHealth();
   await loadGroups();
+  await loadCoaches();
   syncRepeatDaysVisibility();
   syncRepeatDefaultsFromStartDate();
   calendarCursor = startOfMonth(new Date());
