@@ -123,6 +123,45 @@ function syncRepeatDefaultsFromStartDate() {
   }
 }
 
+function weekdayFromRepeatCheckbox(checkboxEl) {
+  if (!checkboxEl) return null;
+
+  const dataWeekday = Number(checkboxEl.dataset.weekday);
+  if (Number.isInteger(dataWeekday) && dataWeekday >= 0 && dataWeekday <= 6) {
+    return dataWeekday;
+  }
+
+  const labelEl = checkboxEl.closest("label");
+  const dayText = labelEl
+    ? (labelEl.querySelector("span")?.textContent || "").trim()
+        .toLowerCase()
+    : "";
+
+  const byLabel = {
+    sunday: 0,
+    su: 0,
+    monday: 1,
+    m: 1,
+    tuesday: 2,
+    tu: 2,
+    t: 2,
+    wednesday: 3,
+    w: 3,
+    thursday: 4,
+    th: 4,
+    friday: 5,
+    f: 5,
+    saturday: 6,
+    sa: 6,
+  };
+  if (Object.prototype.hasOwnProperty.call(byLabel, dayText)) {
+    return byLabel[dayText];
+  }
+
+  const parsed = Number(checkboxEl.value);
+  return Number.isInteger(parsed) && parsed >= 0 && parsed <= 6 ? parsed : null;
+}
+
 function formatDate(d) {
   if (!d) return "—";
   const dt = new Date(d);
@@ -542,8 +581,8 @@ sidebarSessionForm.addEventListener("submit", async (e) => {
         'input[name="sidebar-repeat-day"]:checked',
       );
       return Array.from(checks)
-        .map((c) => Number(c.value))
-        .filter((v) => v >= 0 && v <= 6);
+        .map((c) => weekdayFromRepeatCheckbox(c))
+        .filter((v) => Number.isInteger(v) && v >= 0 && v <= 6);
     }
 
     const repeatWeekly = sidebarRepeatWeekly.checked;

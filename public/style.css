@@ -711,7 +711,7 @@ input[type="time"]:focus {
 
 .day-picker-inline {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(40px, 1fr));
+  grid-template-columns: repeat(7, minmax(0, 1fr));
   gap: 0.4rem;
 }
 
@@ -724,7 +724,7 @@ input[type="time"]:focus {
   border-radius: 4px;
   cursor: pointer;
   user-select: none;
-  font-size: 0.8rem;
+  font-size: 0.72rem;
   font-weight: 600;
   color: var(--muted);
   transition: all 0.15s;
@@ -750,6 +750,7 @@ input[type="time"]:focus {
 
 .day-checkbox span {
   font-weight: 600;
+  line-height: 1.1;
 }
 
 .schedule-content {
@@ -806,6 +807,6 @@ input[type="time"]:focus {
   }
 
   .day-picker-inline {
-    grid-template-columns: repeat(7, 1fr);
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
