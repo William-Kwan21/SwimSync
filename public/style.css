@@ -757,12 +757,6 @@ input[type="time"]:focus {
   min-width: 0;
 }
 
-.section-divider {
-  border: none;
-  border-top: 1px solid var(--border);
-  margin: 1rem 0;
-}
-
 @media (max-width: 920px) {
   .page-layout {
     grid-template-columns: 1fr;
