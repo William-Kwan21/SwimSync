@@ -496,10 +496,11 @@ app.post(
   authenticate,
   requireRole("admin", "coach"),
   async (req, res) => {
-    const repeatUntilRemoved = Boolean(req.body.repeat_until_removed);
     const { group_id, practice_date, start_time, end_time, location } =
       req.body;
-    const repeatWeeksRaw = Number(req.body.repeat_weeks ?? 1);
+    const repeatWeekly = Boolean(req.body.repeat_weekly);
+    const repeatUntilRemoved = Boolean(req.body.repeat_until_removed);
+    const repeatUntilRaw = req.body.repeat_until || null;
     const repeatDaysInput = Array.isArray(req.body.repeat_days)
       ? req.body.repeat_days
       : [];
@@ -510,11 +511,6 @@ app.post(
           .filter((day) => Number.isInteger(day) && day >= 0 && day <= 6),
       ),
     ];
-    const repeatWeeks = repeatUntilRemoved
-      ? 520
-      : Number.isInteger(repeatWeeksRaw)
-        ? Math.min(52, Math.max(1, repeatWeeksRaw))
-        : 1;
 
     if (!group_id || !practice_date || !start_time || !end_time) {
       return res.status(400).json({
@@ -528,39 +524,86 @@ app.post(
       return res.status(400).json({ message: "Invalid practice_date" });
     }
 
+    const shouldRepeat = repeatWeekly || repeatUntilRemoved;
+    let repeatUntilDate = null;
+
+    if (shouldRepeat) {
+      if (repeatUntilRaw) {
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(repeatUntilRaw)) {
+          return res
+            .status(400)
+            .json({ message: "Invalid repeat_until date. Use YYYY-MM-DD." });
+        }
+
+        repeatUntilDate = new Date(`${repeatUntilRaw}T00:00:00`);
+        if (Number.isNaN(repeatUntilDate.getTime())) {
+          return res.status(400).json({ message: "Invalid repeat_until date" });
+        }
+      } else if (repeatUntilRemoved) {
+        repeatUntilDate = new Date(baseDate);
+        repeatUntilDate.setDate(baseDate.getDate() + 520 * 7);
+      } else {
+        return res.status(400).json({
+          message: "repeat_until is required when repeat_weekly is enabled",
+        });
+      }
+
+      if (repeatUntilDate < baseDate) {
+        return res.status(400).json({
+          message: "repeat_until must be on or after practice_date",
+        });
+      }
+    }
+
+    function toIsoDateLocal(date) {
+      const year = date.getFullYear();
+      const month = String(date.getMonth() + 1).padStart(2, "0");
+      const day = String(date.getDate()).padStart(2, "0");
+      return `${year}-${month}-${day}`;
+    }
+
+    function nextDateForWeekdayOnOrAfter(startDate, weekday) {
+      const candidate = new Date(startDate);
+      const delta = (weekday - candidate.getDay() + 7) % 7;
+      candidate.setDate(candidate.getDate() + delta);
+      return candidate;
+    }
+
     const connection = await pool.getConnection();
     try {
       await connection.beginTransaction();
 
       const values = [];
       const params = [];
-      const dayOffsets = [];
 
-      if (repeatWeeks > 1 && repeatDays.length) {
-        const baseDay = baseDate.getDay();
-        repeatDays.forEach((selectedDay) => {
-          const offset = (selectedDay - baseDay + 7) % 7;
-          dayOffsets.push(offset);
+      if (shouldRepeat) {
+        const weekdays = repeatDays.length ? repeatDays : [baseDate.getDay()];
+
+        weekdays.forEach((weekday) => {
+          let cursor = nextDateForWeekdayOnOrAfter(baseDate, weekday);
+          while (cursor <= repeatUntilDate) {
+            values.push("(?, ?, ?, ?, ?)");
+            params.push(
+              group_id,
+              toIsoDateLocal(cursor),
+              start_time,
+              end_time,
+              location || null,
+            );
+            const next = new Date(cursor);
+            next.setDate(next.getDate() + 7);
+            cursor = next;
+          }
         });
       } else {
-        dayOffsets.push(0);
-      }
-
-      for (let i = 0; i < repeatWeeks; i += 1) {
-        dayOffsets.forEach((offset) => {
-          const nextDate = new Date(baseDate);
-          nextDate.setDate(baseDate.getDate() + i * 7 + offset);
-          const dateValue = nextDate.toISOString().slice(0, 10);
-
-          values.push("(?, ?, ?, ?, ?)");
-          params.push(
-            group_id,
-            dateValue,
-            start_time,
-            end_time,
-            location || null,
-          );
-        });
+        values.push("(?, ?, ?, ?, ?)");
+        params.push(
+          group_id,
+          toIsoDateLocal(baseDate),
+          start_time,
+          end_time,
+          location || null,
+        );
       }
 
       if (!values.length) {

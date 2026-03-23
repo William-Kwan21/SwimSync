@@ -23,6 +23,8 @@ const sidebarSelEnd = document.getElementById("sidebar-sel-end");
 const sidebarSelLocation = document.getElementById("sidebar-sel-location");
 const sidebarRepeatWeekly = document.getElementById("sidebar-repeat-weekly");
 const sidebarRepeatDaysRow = document.getElementById("sidebar-repeat-days-row");
+const sidebarRepeatUntilRow = document.getElementById("sidebar-repeat-until-row");
+const sidebarRepeatUntil = document.getElementById("sidebar-repeat-until");
 const sidebarSessionError = document.getElementById("sidebar-session-error");
 const btnSidebarAddSession = document.getElementById("btn-sidebar-add-session");
 
@@ -69,6 +71,24 @@ function escHtml(str) {
 function showErr(el, msg) {
   el.textContent = msg;
   show(el);
+}
+
+function syncRepeatDaysVisibility() {
+  if (
+    !sidebarRepeatDaysRow ||
+    !sidebarRepeatUntilRow ||
+    !sidebarRepeatWeekly
+  ) {
+    return;
+  }
+
+  if (sidebarRepeatWeekly.checked) {
+    show(sidebarRepeatDaysRow);
+    show(sidebarRepeatUntilRow);
+  } else {
+    hide(sidebarRepeatDaysRow);
+    hide(sidebarRepeatUntilRow);
+  }
 }
 
 function formatDate(d) {
@@ -181,13 +201,7 @@ async function loadGroups() {
 
 /* ── repeat and sidebar handlers ── */
 if (sidebarRepeatWeekly) {
-  sidebarRepeatWeekly.addEventListener("change", () => {
-    if (sidebarRepeatWeekly.checked) {
-      show(sidebarRepeatDaysRow);
-    } else {
-      hide(sidebarRepeatDaysRow);
-    }
-  });
+  sidebarRepeatWeekly.addEventListener("change", syncRepeatDaysVisibility);
 }
 
 /* ── load schedule ── */
@@ -340,6 +354,8 @@ async function editSession(sessionId) {
 sidebarSessionForm.addEventListener("submit", async (e) => {
   e.preventDefault();
   hide(sidebarSessionError);
+  sidebarSessionError.classList.remove("info");
+  sidebarSessionError.classList.add("error");
   btnSidebarAddSession.disabled = true;
   btnSidebarAddSession.textContent = "Adding…";
 
@@ -350,8 +366,31 @@ sidebarSessionForm.addEventListener("submit", async (e) => {
 
   try {
     function getSelectedSidebarRepeatDays() {
-      const checks = document.querySelectorAll('input[name="sidebar-repeat-day"]:checked');
-      return Array.from(checks).map(c => Number(c.value)).filter(v => v >= 0 && v <= 6);
+      const checks = document.querySelectorAll(
+        'input[name="sidebar-repeat-day"]:checked',
+      );
+      return Array.from(checks)
+        .map((c) => Number(c.value))
+        .filter((v) => v >= 0 && v <= 6);
+    }
+
+    const repeatWeekly = sidebarRepeatWeekly.checked;
+    const repeatUntil = sidebarRepeatUntil.value;
+
+    if (repeatWeekly && !repeatUntil) {
+      showErr(
+        sidebarSessionError,
+        "Choose a 'Repeat Until' date when weekly repeat is enabled.",
+      );
+      return;
+    }
+
+    if (repeatWeekly && repeatUntil && repeatUntil < sidebarSelDate.value) {
+      showErr(
+        sidebarSessionError,
+        "'Repeat Until' must be on or after the start date.",
+      );
+      return;
     }
 
     const res = await apiFetch("/api/schedule", {
@@ -363,8 +402,9 @@ sidebarSessionForm.addEventListener("submit", async (e) => {
         start_time: sidebarSelStart.value,
         end_time: sidebarSelEnd.value,
         location: sidebarSelLocation.value.trim(),
-        repeat_until_removed: sidebarRepeatWeekly.checked,
-        repeat_days: sidebarRepeatWeekly.checked ? getSelectedSidebarRepeatDays() : [],
+        repeat_weekly: repeatWeekly,
+        repeat_until: repeatWeekly ? repeatUntil : null,
+        repeat_days: repeatWeekly ? getSelectedSidebarRepeatDays() : [],
       }),
     });
 
@@ -377,12 +417,13 @@ sidebarSessionForm.addEventListener("submit", async (e) => {
     }
 
     sidebarSessionForm.reset();
-  sidebarSelGroup.value = savedGroup;
-  sidebarSelStart.value = savedStart;
-  sidebarSelEnd.value = savedEnd;
-  sidebarSelLocation.value = savedLocation;
-  hide(sidebarRepeatDaysRow);
-  sidebarRepeatWeekly.checked = false;
+    sidebarSelGroup.value = savedGroup;
+    sidebarSelStart.value = savedStart;
+    sidebarSelEnd.value = savedEnd;
+    sidebarSelLocation.value = savedLocation;
+    sidebarRepeatWeekly.checked = false;
+    sidebarRepeatUntil.value = "";
+    syncRepeatDaysVisibility();
     const created = data.created_count || "Session(s)";
     show(sidebarSessionError);
     sidebarSessionError.classList.remove("error");
@@ -492,6 +533,7 @@ async function init() {
 
   await checkHealth();
   await loadGroups();
+  syncRepeatDaysVisibility();
   updateViewDateLabel();
   await loadSchedule();
 }
