@@ -114,6 +114,14 @@ function toDateInputValue(d) {
   return new Date(d).toISOString().slice(0, 10);
 }
 
+function toDateKey(d) {
+  if (!d) return "";
+  if (typeof d === "string") {
+    return d.slice(0, 10);
+  }
+  return toDateInputValue(d);
+}
+
 function toTimeInputValue(t) {
   if (!t) return "";
   return String(t).slice(0, 5);
@@ -213,9 +221,8 @@ async function loadSchedule() {
   btnRefresh.disabled = true;
 
   try {
-    const query = viewDate.value
-      ? `?date=${encodeURIComponent(viewDate.value)}`
-      : "";
+    const isDateFiltered = Boolean(viewDate.value);
+    const query = isDateFiltered ? `?date=${encodeURIComponent(viewDate.value)}` : "";
     const res = await apiFetch(`/api/schedule${query}`);
     const sessions = await res.json();
     scheduleTbody.innerHTML = "";
@@ -230,8 +237,19 @@ async function loadSchedule() {
     const canEdit =
       currentUser &&
       (currentUser.role === "admin" || currentUser.role === "coach");
+    let currentDateKey = "";
 
     sessions.forEach((s, i) => {
+      const nextDateKey = toDateKey(s.practice_date);
+
+      if (!isDateFiltered && nextDateKey && nextDateKey !== currentDateKey) {
+        currentDateKey = nextDateKey;
+        const sep = document.createElement("tr");
+        sep.className = "date-separator-row";
+        sep.innerHTML = `<td colspan="8">${formatDate(s.practice_date)}</td>`;
+        scheduleTbody.appendChild(sep);
+      }
+
       sessionsById.set(String(s.id), s);
       const action = canEdit
         ? `<div class="table-actions">

@@ -283,6 +283,18 @@ tbody tr:hover {
   background: #f6f8fb;
 }
 
+.date-separator-row td {
+  background: #eef4ff;
+  color: #1f3d78;
+  font-weight: 700;
+  border-bottom: 1px solid #c8d8f7;
+  border-top: 1px solid #c8d8f7;
+}
+
+.date-separator-row:hover td {
+  background: #eef4ff;
+}
+
 .table-role,
 .role-pill {
   display: inline-block;

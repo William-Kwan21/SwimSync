@@ -480,7 +480,7 @@ app.get("/api/schedule", authenticate, async (_req, res) => {
         )
       : await pool.query(
           `${baseQuery}
-           ORDER BY ps.practice_date DESC, ps.start_time ASC`,
+           ORDER BY ps.practice_date ASC, ps.start_time ASC`,
         );
 
     return res.json(rows);
