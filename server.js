@@ -480,6 +480,7 @@ app.get("/api/schedule", authenticate, async (_req, res) => {
         )
       : await pool.query(
           `${baseQuery}
+           WHERE ps.practice_date >= CURDATE()
            ORDER BY ps.practice_date ASC, ps.start_time ASC`,
         );
 

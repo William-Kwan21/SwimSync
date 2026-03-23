@@ -765,6 +765,36 @@ if (btnRemoveAll) {
       const res = await apiFetch("/api/schedule", { method: "DELETE" });
       const data = await safeJson(res);
       if (!res.ok) {
+        if (res.status === 404) {
+          // Fallback for servers that have not reloaded the new bulk-delete route.
+          const listRes = await apiFetch("/api/schedule");
+          const list = await safeJson(listRes);
+          if (!listRes.ok || !Array.isArray(list)) {
+            alert(
+              `Failed to remove sessions: ${(data && data.message) || res.status}`,
+            );
+            return;
+          }
+
+          let removedCount = 0;
+          for (const item of list) {
+            const id = Number(item && item.id);
+            if (!Number.isInteger(id)) continue;
+            const delRes = await apiFetch(`/api/schedule/${id}`, {
+              method: "DELETE",
+            });
+            if (delRes.ok) {
+              removedCount += 1;
+            }
+          }
+
+          alert(
+            `Removed ${removedCount} session${removedCount === 1 ? "" : "s"}.`,
+          );
+          await loadSchedule();
+          return;
+        }
+
         alert(
           `Failed to remove sessions: ${(data && data.message) || res.status}`,
         );
