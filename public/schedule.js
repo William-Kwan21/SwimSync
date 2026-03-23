@@ -165,7 +165,19 @@ function weekdayFromRepeatCheckbox(checkboxEl) {
 
 function formatDate(d) {
   if (!d) return "—";
-  const dt = new Date(d);
+  let dt;
+  if (typeof d === "string") {
+    const dateOnly = d.slice(0, 10);
+    if (/^\d{4}-\d{2}-\d{2}$/.test(dateOnly)) {
+      dt = new Date(`${dateOnly}T00:00:00`);
+    } else {
+      dt = new Date(d);
+    }
+  } else {
+    dt = new Date(d);
+  }
+
+  if (Number.isNaN(dt.getTime())) return "—";
   return dt.toLocaleDateString("en-US", {
     weekday: "short",
     year: "numeric",
@@ -183,7 +195,22 @@ function formatTime(t) {
 
 function toDateInputValue(d) {
   if (!d) return "";
-  const dt = new Date(d);
+  let dt;
+  if (typeof d === "string") {
+    const dateOnly = d.slice(0, 10);
+    if (/^\d{4}-\d{2}-\d{2}$/.test(dateOnly)) {
+      dt = new Date(`${dateOnly}T00:00:00`);
+    } else {
+      dt = new Date(d);
+    }
+  } else {
+    dt = new Date(d);
+  }
+
+  if (Number.isNaN(dt.getTime())) {
+    return "";
+  }
+
   const year = dt.getFullYear();
   const month = String(dt.getMonth() + 1).padStart(2, "0");
   const day = String(dt.getDate()).padStart(2, "0");
