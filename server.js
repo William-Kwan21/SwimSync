@@ -707,6 +707,22 @@ app.put(
 );
 
 app.delete(
+  "/api/schedule",
+  authenticate,
+  requireRole("admin", "coach"),
+  async (_req, res) => {
+    try {
+      const [result] = await pool.query("DELETE FROM practice_schedule");
+      return res.json({ deleted_count: result.affectedRows || 0 });
+    } catch (error) {
+      return res
+        .status(500)
+        .json({ message: "Failed to delete sessions", error: error.message });
+    }
+  },
+);
+
+app.delete(
   "/api/schedule/:id",
   authenticate,
   requireRole("admin", "coach"),

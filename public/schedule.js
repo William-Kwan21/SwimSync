@@ -13,6 +13,7 @@ const schedActionHeading = document.getElementById("sched-action-heading");
 const viewDate = document.getElementById("view-date");
 const btnViewDate = document.getElementById("btn-view-date");
 const btnClearDate = document.getElementById("btn-clear-date");
+const btnRemoveAll = document.getElementById("btn-remove-all");
 const btnCalPrev = document.getElementById("btn-cal-prev");
 const btnCalNext = document.getElementById("btn-cal-next");
 const calendarMonthLabel = document.getElementById("calendar-month-label");
@@ -749,6 +750,39 @@ btnClearDate.addEventListener("click", () => {
   loadSchedule();
 });
 
+if (btnRemoveAll) {
+  btnRemoveAll.addEventListener("click", async () => {
+    const approved = confirm(
+      "Remove ALL scheduled sessions? This cannot be undone.",
+    );
+    if (!approved) return;
+
+    btnRemoveAll.disabled = true;
+    const previousLabel = btnRemoveAll.textContent;
+    btnRemoveAll.textContent = "Removing…";
+
+    try {
+      const res = await apiFetch("/api/schedule", { method: "DELETE" });
+      const data = await safeJson(res);
+      if (!res.ok) {
+        alert(
+          `Failed to remove sessions: ${(data && data.message) || res.status}`,
+        );
+        return;
+      }
+
+      const removed = Number(data && data.deleted_count) || 0;
+      alert(`Removed ${removed} session${removed === 1 ? "" : "s"}.`);
+      await loadSchedule();
+    } catch (err) {
+      alert(`Error removing sessions: ${err.message}`);
+    } finally {
+      btnRemoveAll.disabled = false;
+      btnRemoveAll.textContent = previousLabel;
+    }
+  });
+}
+
 if (btnCalPrev) {
   btnCalPrev.addEventListener("click", () => {
     calendarCursor = new Date(
@@ -814,10 +848,12 @@ async function init() {
   if (canEdit) {
     show(sidebarSessionCard);
     show(sidebarGroupCard);
+    if (btnRemoveAll) show(btnRemoveAll);
     schedActionHeading.textContent = "Action";
   } else {
     hide(sidebarSessionCard);
     hide(sidebarGroupCard);
+    if (btnRemoveAll) hide(btnRemoveAll);
     schedActionHeading.textContent = "Access";
   }
 
