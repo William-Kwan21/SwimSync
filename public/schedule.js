@@ -13,6 +13,10 @@ const schedActionHeading = document.getElementById("sched-action-heading");
 const viewDate = document.getElementById("view-date");
 const btnViewDate = document.getElementById("btn-view-date");
 const btnClearDate = document.getElementById("btn-clear-date");
+const btnCalPrev = document.getElementById("btn-cal-prev");
+const btnCalNext = document.getElementById("btn-cal-next");
+const calendarMonthLabel = document.getElementById("calendar-month-label");
+const calendarGrid = document.getElementById("calendar-grid");
 
 const sidebarSessionCard = document.getElementById("sidebar-session-card");
 const sidebarSessionForm = document.getElementById("sidebar-session-form");
@@ -37,6 +41,7 @@ const btnSidebarAddGroup = document.getElementById("btn-sidebar-add-group");
 
 let currentUser = null;
 let sessionsById = new Map();
+let calendarCursor = new Date();
 
 /* ── helpers ── */
 function show(el) {
@@ -91,6 +96,33 @@ function syncRepeatDaysVisibility() {
   }
 }
 
+function syncRepeatDefaultsFromStartDate() {
+  if (!sidebarSelDate) return;
+
+  if (sidebarRepeatUntil) {
+    sidebarRepeatUntil.min = sidebarSelDate.value || "";
+    if (!sidebarRepeatUntil.value && sidebarSelDate.value) {
+      sidebarRepeatUntil.value = sidebarSelDate.value;
+    }
+  }
+
+  if (!sidebarSelDate.value) return;
+  const startDate = new Date(`${sidebarSelDate.value}T00:00:00`);
+  if (Number.isNaN(startDate.getTime())) return;
+
+  const checks = document.querySelectorAll('input[name="sidebar-repeat-day"]');
+  const anySelected = Array.from(checks).some((c) => c.checked);
+  if (anySelected) return;
+
+  const weekday = startDate.getDay();
+  const defaultCheck = document.querySelector(
+    `input[name="sidebar-repeat-day"][value="${weekday}"]`,
+  );
+  if (defaultCheck) {
+    defaultCheck.checked = true;
+  }
+}
+
 function formatDate(d) {
   if (!d) return "—";
   const dt = new Date(d);
@@ -111,7 +143,11 @@ function formatTime(t) {
 
 function toDateInputValue(d) {
   if (!d) return "";
-  return new Date(d).toISOString().slice(0, 10);
+  const dt = new Date(d);
+  const year = dt.getFullYear();
+  const month = String(dt.getMonth() + 1).padStart(2, "0");
+  const day = String(dt.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
 }
 
 function toDateKey(d) {
@@ -143,6 +179,75 @@ function updateViewDateLabel() {
   btnViewDate.textContent = formatViewDateLabel(viewDate.value);
 }
 
+function startOfMonth(dateValue) {
+  return new Date(dateValue.getFullYear(), dateValue.getMonth(), 1);
+}
+
+function monthLabel(dateValue) {
+  return dateValue.toLocaleDateString("en-US", {
+    month: "long",
+    year: "numeric",
+  });
+}
+
+function renderCalendar() {
+  if (!calendarGrid || !calendarMonthLabel) return;
+
+  const year = calendarCursor.getFullYear();
+  const month = calendarCursor.getMonth();
+  const firstOfMonth = new Date(year, month, 1);
+  const firstWeekday = firstOfMonth.getDay();
+  const totalDays = new Date(year, month + 1, 0).getDate();
+  const todayKey = toDateInputValue(new Date());
+  const selectedKey = viewDate.value || "";
+
+  calendarMonthLabel.textContent = monthLabel(calendarCursor);
+  calendarGrid.innerHTML = "";
+
+  for (let i = 0; i < firstWeekday; i += 1) {
+    const spacer = document.createElement("button");
+    spacer.type = "button";
+    spacer.className = "calendar-day is-empty";
+    spacer.disabled = true;
+    spacer.setAttribute("aria-hidden", "true");
+    calendarGrid.appendChild(spacer);
+  }
+
+  for (let day = 1; day <= totalDays; day += 1) {
+    const dateKey = toDateInputValue(new Date(year, month, day));
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "calendar-day";
+    btn.dataset.date = dateKey;
+    btn.textContent = String(day);
+    btn.setAttribute(
+      "aria-label",
+      new Date(`${dateKey}T00:00:00`).toLocaleDateString("en-US", {
+        weekday: "long",
+        month: "long",
+        day: "numeric",
+        year: "numeric",
+      }),
+    );
+
+    if (dateKey === todayKey) {
+      btn.classList.add("is-today");
+    }
+    if (dateKey === selectedKey) {
+      btn.classList.add("is-selected");
+    }
+
+    calendarGrid.appendChild(btn);
+  }
+}
+
+function syncCalendarMonthToSelectedDate() {
+  if (!viewDate || !viewDate.value) return;
+  const selected = new Date(`${viewDate.value}T00:00:00`);
+  if (Number.isNaN(selected.getTime())) return;
+  calendarCursor = startOfMonth(selected);
+}
+
 function openViewDateCalendar() {
   if (!viewDate) return;
   if (typeof viewDate.showPicker === "function") {
@@ -157,6 +262,7 @@ function clearViewDateFilter() {
   if (!viewDate) return;
   viewDate.value = "";
   updateViewDateLabel();
+  renderCalendar();
 }
 
 async function safeJson(res) {
@@ -216,6 +322,9 @@ async function loadGroups() {
 /* ── repeat and sidebar handlers ── */
 if (sidebarRepeatWeekly) {
   sidebarRepeatWeekly.addEventListener("change", syncRepeatDaysVisibility);
+}
+if (sidebarSelDate) {
+  sidebarSelDate.addEventListener("change", syncRepeatDefaultsFromStartDate);
 }
 
 /* ── load schedule ── */
@@ -447,13 +556,24 @@ sidebarSessionForm.addEventListener("submit", async (e) => {
     sidebarSelLocation.value = savedLocation;
     sidebarRepeatWeekly.checked = false;
     sidebarRepeatUntil.value = "";
+    sidebarRepeatUntil.min = "";
     syncRepeatDaysVisibility();
     clearViewDateFilter();
-    const created = data.created_count || "Session(s)";
+    const createdCount = Number(data && data.created_count) || 0;
+    const createdSessions = Array.isArray(data && data.sessions)
+      ? data.sessions
+      : [];
+    const firstCreated = createdSessions[0] || null;
+    const lastCreated = createdSessions[createdSessions.length - 1] || null;
+    const summary =
+      createdCount > 0 && firstCreated && lastCreated
+        ? `Created ${createdCount} session${createdCount === 1 ? "" : "s"} from ${formatDate(firstCreated.practice_date)} to ${formatDate(lastCreated.practice_date)}.`
+        : `Added ${data && data.created_count ? data.created_count : "session(s)"}.`;
+
     show(sidebarSessionError);
     sidebarSessionError.classList.remove("error");
     sidebarSessionError.classList.add("info");
-    sidebarSessionError.textContent = `Added ${created} session(s)!`;
+    sidebarSessionError.textContent = summary;
     await loadSchedule();
   } catch (err) {
     show(sidebarSessionError);
@@ -509,13 +629,49 @@ sidebarGroupForm.addEventListener("submit", async (e) => {
 btnRefresh.addEventListener("click", () => loadSchedule());
 btnViewDate.addEventListener("click", openViewDateCalendar);
 viewDate.addEventListener("change", () => {
+  syncCalendarMonthToSelectedDate();
   updateViewDateLabel();
+  renderCalendar();
   loadSchedule();
 });
 btnClearDate.addEventListener("click", () => {
   clearViewDateFilter();
   loadSchedule();
 });
+
+if (btnCalPrev) {
+  btnCalPrev.addEventListener("click", () => {
+    calendarCursor = new Date(
+      calendarCursor.getFullYear(),
+      calendarCursor.getMonth() - 1,
+      1,
+    );
+    renderCalendar();
+  });
+}
+
+if (btnCalNext) {
+  btnCalNext.addEventListener("click", () => {
+    calendarCursor = new Date(
+      calendarCursor.getFullYear(),
+      calendarCursor.getMonth() + 1,
+      1,
+    );
+    renderCalendar();
+  });
+}
+
+if (calendarGrid) {
+  calendarGrid.addEventListener("click", (e) => {
+    const btn = e.target.closest("button.calendar-day[data-date]");
+    if (!btn) return;
+    viewDate.value = btn.dataset.date;
+    syncCalendarMonthToSelectedDate();
+    updateViewDateLabel();
+    renderCalendar();
+    loadSchedule();
+  });
+}
 
 btnLogout.addEventListener("click", redirectToLogin);
 
@@ -558,7 +714,10 @@ async function init() {
   await checkHealth();
   await loadGroups();
   syncRepeatDaysVisibility();
+  syncRepeatDefaultsFromStartDate();
+  calendarCursor = startOfMonth(new Date());
   clearViewDateFilter();
+  renderCalendar();
   await loadSchedule();
 }
 

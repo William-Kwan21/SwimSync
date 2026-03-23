@@ -66,7 +66,7 @@
             <div class="form-row form-row-full repeat-group">
               <label class="checkbox-row" for="sidebar-repeat-weekly">
                 <input id="sidebar-repeat-weekly" type="checkbox" />
-                <span>Repeat weekly until removed by admin</span>
+                <span>Repeat weekly until the date below</span>
               </label>
             </div>
             <div class="form-row form-row-full hidden" id="sidebar-repeat-days-row">
@@ -124,6 +124,23 @@
               <button class="btn btn-secondary" id="btn-clear-date" type="button">All Days</button>
               <button class="btn btn-secondary" id="btn-refresh">&#8635; Refresh</button>
             </div>
+          </div>
+          <div class="calendar-picker" aria-label="Practice calendar">
+            <div class="calendar-toolbar">
+              <button class="btn btn-secondary calendar-nav" id="btn-cal-prev" type="button" aria-label="Previous month">&larr;</button>
+              <div class="calendar-month-label" id="calendar-month-label">Month Year</div>
+              <button class="btn btn-secondary calendar-nav" id="btn-cal-next" type="button" aria-label="Next month">&rarr;</button>
+            </div>
+            <div class="calendar-weekdays" aria-hidden="true">
+              <span>Sun</span>
+              <span>Mon</span>
+              <span>Tue</span>
+              <span>Wed</span>
+              <span>Thu</span>
+              <span>Fri</span>
+              <span>Sat</span>
+            </div>
+            <div class="calendar-grid" id="calendar-grid"></div>
           </div>
         <div id="schedule-loading" class="state-msg">
           Loading schedule&hellip;

@@ -500,7 +500,10 @@ app.post(
       req.body;
     const repeatWeekly = Boolean(req.body.repeat_weekly);
     const repeatUntilRemoved = Boolean(req.body.repeat_until_removed);
-    const repeatUntilRaw = req.body.repeat_until || null;
+    const repeatUntilRaw =
+      typeof req.body.repeat_until === "string"
+        ? req.body.repeat_until.trim()
+        : "";
     const repeatDaysInput = Array.isArray(req.body.repeat_days)
       ? req.body.repeat_days
       : [];
@@ -524,11 +527,14 @@ app.post(
       return res.status(400).json({ message: "Invalid practice_date" });
     }
 
-    const shouldRepeat = repeatWeekly || repeatUntilRemoved;
+    const hasRepeatUntil = Boolean(repeatUntilRaw);
+    const hasRepeatDays = repeatDays.length > 0;
+    const shouldRepeat =
+      repeatWeekly || repeatUntilRemoved || hasRepeatUntil || hasRepeatDays;
     let repeatUntilDate = null;
 
     if (shouldRepeat) {
-      if (repeatUntilRaw) {
+      if (hasRepeatUntil) {
         if (!/^\d{4}-\d{2}-\d{2}$/.test(repeatUntilRaw)) {
           return res
             .status(400)
@@ -544,7 +550,7 @@ app.post(
         repeatUntilDate.setDate(baseDate.getDate() + 520 * 7);
       } else {
         return res.status(400).json({
-          message: "repeat_until is required when repeat_weekly is enabled",
+          message: "repeat_until is required for weekly recurrence",
         });
       }
 
