@@ -158,6 +158,45 @@ function toDateKey(d) {
   return toDateInputValue(d);
 }
 
+function buildWeeklyOccurrenceDates(startDateStr, endDateStr, weekdaysInput) {
+  const startDate = new Date(`${startDateStr}T00:00:00`);
+  const endDate = new Date(`${endDateStr}T00:00:00`);
+  if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime())) {
+    return [];
+  }
+  if (endDate < startDate) {
+    return [];
+  }
+
+  const normalizedWeekdays = [
+    ...new Set(
+      weekdaysInput
+        .map((day) => Number(day))
+        .filter((day) => Number.isInteger(day) && day >= 0 && day <= 6),
+    ),
+  ];
+  const weekdays = normalizedWeekdays.length
+    ? normalizedWeekdays
+    : [startDate.getDay()];
+
+  const dateSet = new Set();
+  weekdays.forEach((weekday) => {
+    const first = new Date(startDate);
+    const offset = (weekday - first.getDay() + 7) % 7;
+    first.setDate(first.getDate() + offset);
+
+    let cursor = first;
+    while (cursor <= endDate) {
+      dateSet.add(toDateInputValue(cursor));
+      const next = new Date(cursor);
+      next.setDate(next.getDate() + 7);
+      cursor = next;
+    }
+  });
+
+  return Array.from(dateSet).sort();
+}
+
 function toTimeInputValue(t) {
   if (!t) return "";
   return String(t).slice(0, 5);
@@ -526,26 +565,59 @@ sidebarSessionForm.addEventListener("submit", async (e) => {
       return;
     }
 
-    const res = await apiFetch("/api/schedule", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        group_id: Number(sidebarSelGroup.value),
-        practice_date: sidebarSelDate.value,
-        start_time: sidebarSelStart.value,
-        end_time: sidebarSelEnd.value,
-        location: sidebarSelLocation.value.trim(),
-        repeat_weekly: repeatWeekly,
-        repeat_until: repeatWeekly ? repeatUntil : null,
-        repeat_days: repeatWeekly ? getSelectedSidebarRepeatDays() : [],
-      }),
-    });
+    const selectedRepeatDays = repeatWeekly
+      ? getSelectedSidebarRepeatDays()
+      : [];
+    const targetDates = repeatWeekly
+      ? buildWeeklyOccurrenceDates(
+          sidebarSelDate.value,
+          repeatUntil,
+          selectedRepeatDays,
+        )
+      : [sidebarSelDate.value];
 
-    const data = await safeJson(res);
-    if (!res.ok) {
-      const msg = (data && data.message) || "Failed to add session";
-      show(sidebarSessionError);
-      sidebarSessionError.textContent = msg;
+    if (!targetDates.length) {
+      showErr(
+        sidebarSessionError,
+        "No valid session dates were generated from your repeat settings.",
+      );
+      return;
+    }
+
+    const createdSessions = [];
+    const failedDates = [];
+
+    for (const dateValue of targetDates) {
+      const res = await apiFetch("/api/schedule", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          group_id: Number(sidebarSelGroup.value),
+          practice_date: dateValue,
+          start_time: sidebarSelStart.value,
+          end_time: sidebarSelEnd.value,
+          location: sidebarSelLocation.value.trim(),
+          repeat_weekly: false,
+          repeat_until: null,
+          repeat_days: [],
+        }),
+      });
+
+      const data = await safeJson(res);
+      if (!res.ok) {
+        failedDates.push(dateValue);
+        continue;
+      }
+
+      if (data && Array.isArray(data.sessions) && data.sessions.length) {
+        createdSessions.push(data.sessions[0]);
+      } else {
+        createdSessions.push({ practice_date: dateValue });
+      }
+    }
+
+    if (!createdSessions.length) {
+      showErr(sidebarSessionError, "Failed to add sessions.");
       return;
     }
 
@@ -559,21 +631,20 @@ sidebarSessionForm.addEventListener("submit", async (e) => {
     sidebarRepeatUntil.min = "";
     syncRepeatDaysVisibility();
     clearViewDateFilter();
-    const createdCount = Number(data && data.created_count) || 0;
-    const createdSessions = Array.isArray(data && data.sessions)
-      ? data.sessions
-      : [];
+    const createdCount = createdSessions.length;
     const firstCreated = createdSessions[0] || null;
     const lastCreated = createdSessions[createdSessions.length - 1] || null;
     const summary =
       createdCount > 0 && firstCreated && lastCreated
         ? `Created ${createdCount} session${createdCount === 1 ? "" : "s"} from ${formatDate(firstCreated.practice_date)} to ${formatDate(lastCreated.practice_date)}.`
-        : `Added ${data && data.created_count ? data.created_count : "session(s)"}.`;
+        : `Added ${createdCount} session${createdCount === 1 ? "" : "s"}.`;
 
     show(sidebarSessionError);
     sidebarSessionError.classList.remove("error");
     sidebarSessionError.classList.add("info");
-    sidebarSessionError.textContent = summary;
+    sidebarSessionError.textContent = failedDates.length
+      ? `${summary} ${failedDates.length} date${failedDates.length === 1 ? " was" : "s were"} skipped.`
+      : summary;
     await loadSchedule();
   } catch (err) {
     show(sidebarSessionError);
