@@ -153,6 +153,12 @@ function openViewDateCalendar() {
   viewDate.click();
 }
 
+function clearViewDateFilter() {
+  if (!viewDate) return;
+  viewDate.value = "";
+  updateViewDateLabel();
+}
+
 async function safeJson(res) {
   const text = await res.text();
   if (!text || !text.trim()) return null;
@@ -442,6 +448,7 @@ sidebarSessionForm.addEventListener("submit", async (e) => {
     sidebarRepeatWeekly.checked = false;
     sidebarRepeatUntil.value = "";
     syncRepeatDaysVisibility();
+    clearViewDateFilter();
     const created = data.created_count || "Session(s)";
     show(sidebarSessionError);
     sidebarSessionError.classList.remove("error");
@@ -506,8 +513,7 @@ viewDate.addEventListener("change", () => {
   loadSchedule();
 });
 btnClearDate.addEventListener("click", () => {
-  viewDate.value = "";
-  updateViewDateLabel();
+  clearViewDateFilter();
   loadSchedule();
 });
 
@@ -552,7 +558,7 @@ async function init() {
   await checkHealth();
   await loadGroups();
   syncRepeatDaysVisibility();
-  updateViewDateLabel();
+  clearViewDateFilter();
   await loadSchedule();
 }
 
