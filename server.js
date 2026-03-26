@@ -949,7 +949,7 @@ app.get(
       }
 
       const groupId = scheduleRows[0].group_id;
-      const [rows] = await pool.query(
+      const [groupRows] = await pool.query(
         `SELECT s.id AS swimmer_id,
                 u.name,
                 u.email,
@@ -964,7 +964,34 @@ app.get(
         [scheduleId, groupId],
       );
 
-      return res.json({ schedule_id: scheduleId, swimmers: rows });
+      if (groupRows.length > 0) {
+        return res.json({
+          schedule_id: scheduleId,
+          group_id: groupId,
+          swimmers: groupRows,
+          source: "group",
+        });
+      }
+
+      const [fallbackRows] = await pool.query(
+        `SELECT s.id AS swimmer_id,
+                u.name,
+                u.email,
+                COALESCE(a.status, 'unmarked') AS status,
+                a.note
+         FROM swimmers s
+         JOIN users u ON u.id = s.user_id
+         LEFT JOIN attendance a ON a.schedule_id = ? AND a.swimmer_id = s.id
+         ORDER BY u.name ASC`,
+        [scheduleId],
+      );
+
+      return res.json({
+        schedule_id: scheduleId,
+        group_id: groupId,
+        swimmers: fallbackRows,
+        source: "all-swimmers-fallback",
+      });
     } catch (error) {
       return res.status(500).json({
         message: "Failed to fetch attendance roster",
@@ -1017,6 +1044,15 @@ app.put(
       const allowedSwimmerIds = new Set(
         allowedRows.map((row) => Number(row.swimmer_id)),
       );
+      const useFallbackRoster = allowedSwimmerIds.size === 0;
+
+      let validFallbackSwimmerIds = new Set();
+      if (useFallbackRoster) {
+        const [allSwimmerRows] = await connection.query("SELECT id FROM swimmers");
+        validFallbackSwimmerIds = new Set(
+          allSwimmerRows.map((row) => Number(row.id)),
+        );
+      }
 
       await connection.beginTransaction();
 
@@ -1025,7 +1061,11 @@ app.put(
         const status = String(entry && entry.status ? entry.status : "").trim();
         const note = entry && typeof entry.note === "string" ? entry.note.trim() : null;
 
-        if (!Number.isInteger(swimmerId) || !allowedSwimmerIds.has(swimmerId)) {
+        const swimmerAllowed = useFallbackRoster
+          ? validFallbackSwimmerIds.has(swimmerId)
+          : allowedSwimmerIds.has(swimmerId);
+
+        if (!Number.isInteger(swimmerId) || !swimmerAllowed) {
           await connection.rollback();
           return res.status(400).json({
             message: `Invalid swimmer for session group: ${entry && entry.swimmer_id}`,
