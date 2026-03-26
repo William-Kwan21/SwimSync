@@ -54,6 +54,17 @@ const btnEditSessionClose = document.getElementById("btn-edit-session-close");
 const btnEditSessionCancel = document.getElementById("btn-edit-session-cancel");
 const btnEditSessionSave = document.getElementById("btn-edit-session-save");
 
+const attendanceModal = document.getElementById("attendance-modal");
+const attendanceForm = document.getElementById("attendance-form");
+const attendanceSessionId = document.getElementById("attendance-session-id");
+const attendanceSessionLabel = document.getElementById("attendance-session-label");
+const attendanceSetAll = document.getElementById("attendance-set-all");
+const attendanceTbody = document.getElementById("attendance-tbody");
+const attendanceError = document.getElementById("attendance-error");
+const btnAttendanceClose = document.getElementById("btn-attendance-close");
+const btnAttendanceCancel = document.getElementById("btn-attendance-cancel");
+const btnAttendanceSave = document.getElementById("btn-attendance-save");
+
 let currentUser = null;
 let sessionsById = new Map();
 let calendarCursor = new Date();
@@ -223,6 +234,31 @@ function formatTime(t) {
   const [h, m] = t.split(":");
   const hr = Number(h);
   return `${hr % 12 || 12}:${m} ${hr < 12 ? "AM" : "PM"}`;
+}
+
+function toAttendanceLabel(status) {
+  const key = String(status || "unmarked").toLowerCase();
+  if (key === "present") return "Present";
+  if (key === "late") return "Late";
+  if (key === "absent") return "Absent";
+  if (key === "excused") return "Excused";
+  return "Unmarked";
+}
+
+function attendanceBadge(status) {
+  const key = String(status || "unmarked").toLowerCase();
+  return `<span class="attendance-pill attendance-${escHtml(key)}">${escHtml(toAttendanceLabel(key))}</span>`;
+}
+
+function attendanceOptions(selectedStatus) {
+  const selectedKey = String(selectedStatus || "unmarked").toLowerCase();
+  const options = ["unmarked", "present", "late", "absent", "excused"];
+  return options
+    .map((opt) => {
+      const selected = opt === selectedKey ? "selected" : "";
+      return `<option value="${opt}" ${selected}>${toAttendanceLabel(opt)}</option>`;
+    })
+    .join("");
 }
 
 function toDateInputValue(d) {
@@ -483,7 +519,19 @@ async function loadSchedule() {
     const isDateFiltered = Boolean(viewDate.value);
     const query = isDateFiltered ? `?date=${encodeURIComponent(viewDate.value)}` : "";
     const res = await apiFetch(`/api/schedule${query}`);
-    const sessions = await res.json();
+    const rawSessions = await res.json();
+    const sessions = isDateFiltered
+      ? rawSessions
+      : rawSessions.filter((session) => {
+          const dateValue = new Date(`${toDateKey(session.practice_date)}T00:00:00`);
+          if (Number.isNaN(dateValue.getTime())) {
+            return false;
+          }
+          return (
+            dateValue.getFullYear() === calendarCursor.getFullYear() &&
+            dateValue.getMonth() === calendarCursor.getMonth()
+          );
+        });
     scheduleTbody.innerHTML = "";
     sessionsById = new Map();
 
@@ -510,12 +558,21 @@ async function loadSchedule() {
       }
 
       sessionsById.set(String(s.id), s);
-      const action = canEdit
-        ? `<div class="table-actions">
+      let action = '<span class="muted-inline">View only</span>';
+      if (canEdit) {
+        action = `<div class="table-actions">
+             <button class="btn btn-secondary" data-action="attendance" data-id="${s.id}">Attendance</button>
              <button class="btn btn-secondary" data-action="edit" data-id="${s.id}">Edit</button>
              <button class="btn btn-danger" data-action="remove" data-id="${s.id}">Remove</button>
-           </div>`
-        : '<span class="muted-inline">View only</span>';
+           </div>`;
+      } else if (currentUser && currentUser.role === "swimmer") {
+        action = attendanceBadge(s.my_attendance_status);
+      } else if (currentUser && currentUser.role === "parent") {
+        action = `<span class="muted-inline">${escHtml(
+          s.parent_attendance_summary || "Unmarked",
+        )}</span>`;
+      }
+
       const tr = document.createElement("tr");
       tr.dataset.id = s.id;
       tr.innerHTML = `
@@ -544,6 +601,10 @@ async function loadSchedule() {
 scheduleTbody.addEventListener("click", async (e) => {
   const btn = e.target.closest("button[data-action]");
   if (!btn) return;
+  if (btn.dataset.action === "attendance") {
+    await openAttendanceModal(btn.dataset.id);
+    return;
+  }
   if (btn.dataset.action === "edit") {
     await editSession(btn.dataset.id);
     return;
@@ -572,6 +633,121 @@ scheduleTbody.addEventListener("click", async (e) => {
     btn.textContent = "Remove";
   }
 });
+
+async function openAttendanceModal(sessionId) {
+  const session = sessionsById.get(String(sessionId));
+  if (!session) {
+    alert("Session data is out of date. Please refresh and try again.");
+    return;
+  }
+
+  attendanceSessionId.value = String(session.id);
+  attendanceSessionLabel.textContent = `${formatDate(session.practice_date)} - ${session.group_name}`;
+  if (attendanceSetAll) {
+    attendanceSetAll.value = "";
+  }
+  hide(attendanceError);
+  attendanceTbody.innerHTML = `<tr><td colspan="3" class="muted-inline">Loading swimmers...</td></tr>`;
+
+  show(attendanceModal);
+  document.body.style.overflow = "hidden";
+
+  try {
+    const res = await apiFetch(`/api/schedule/${session.id}/attendance`);
+    const data = await safeJson(res);
+    if (!res.ok) {
+      throw new Error((data && data.message) || `Failed (${res.status})`);
+    }
+
+    const swimmers = (data && Array.isArray(data.swimmers)) ? data.swimmers : [];
+    if (!swimmers.length) {
+      attendanceTbody.innerHTML = `<tr><td colspan="3" class="muted-inline">No swimmers assigned to this group.</td></tr>`;
+      attendanceSessionLabel.textContent = `${formatDate(session.practice_date)} - ${session.group_name} (0 swimmers)`;
+      return;
+    }
+
+    attendanceSessionLabel.textContent = `${formatDate(session.practice_date)} - ${session.group_name} (${swimmers.length} swimmers)`;
+
+    attendanceTbody.innerHTML = swimmers
+      .map(
+        (swimmer) => `<tr data-swimmer-id="${swimmer.swimmer_id}">
+          <td>${escHtml(swimmer.name)}</td>
+          <td>
+            <select data-attendance-status="${swimmer.swimmer_id}">
+              ${attendanceOptions(swimmer.status)}
+            </select>
+          </td>
+          <td>
+            <input type="text" data-attendance-note="${swimmer.swimmer_id}" value="${escHtml(swimmer.note || "")}" placeholder="Optional note" />
+          </td>
+        </tr>`,
+      )
+      .join("");
+  } catch (err) {
+    showErr(attendanceError, `Failed to load attendance: ${err.message}`);
+    attendanceTbody.innerHTML = `<tr><td colspan="3" class="muted-inline">Could not load swimmer roster.</td></tr>`;
+  }
+}
+
+function closeAttendanceModal() {
+  if (!attendanceModal) return;
+  hide(attendanceModal);
+  attendanceForm.reset();
+  if (attendanceSetAll) {
+    attendanceSetAll.value = "";
+  }
+  attendanceTbody.innerHTML = "";
+  hide(attendanceError);
+  document.body.style.overflow = "";
+}
+
+async function submitAttendance() {
+  hide(attendanceError);
+
+  const scheduleId = Number(attendanceSessionId.value);
+  if (!Number.isInteger(scheduleId)) {
+    showErr(attendanceError, "Invalid session id.");
+    return;
+  }
+
+  const rows = Array.from(attendanceTbody.querySelectorAll("tr[data-swimmer-id]"));
+  const entries = rows
+    .map((row) => {
+      const swimmerId = Number(row.dataset.swimmerId);
+      const statusSelect = row.querySelector("select[data-attendance-status]");
+      const noteInput = row.querySelector("input[data-attendance-note]");
+      return {
+        swimmer_id: swimmerId,
+        status: statusSelect ? statusSelect.value : "unmarked",
+        note: noteInput ? noteInput.value.trim() : "",
+      };
+    })
+    .filter((entry) => Number.isInteger(entry.swimmer_id));
+
+  if (!entries.length) {
+    showErr(attendanceError, "No swimmers available to save.");
+    return;
+  }
+
+  try {
+    const res = await apiFetch(`/api/schedule/${scheduleId}/attendance`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ entries }),
+    });
+
+    const data = await safeJson(res);
+    if (!res.ok) {
+      throw new Error((data && data.message) || `Failed (${res.status})`);
+    }
+
+    closeAttendanceModal();
+    await loadSchedule();
+    showScheduleNotice("Attendance saved.");
+  } catch (err) {
+    showErr(attendanceError, `Failed to save attendance: ${err.message}`);
+  }
+}
 
 async function editSession(sessionId) {
   const session = sessionsById.get(String(sessionId));
@@ -848,12 +1024,49 @@ if (editSessionForm) {
   });
 }
 
+if (attendanceForm) {
+  attendanceForm.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    btnAttendanceSave.disabled = true;
+    btnAttendanceSave.textContent = "Saving...";
+    try {
+      await submitAttendance();
+    } finally {
+      btnAttendanceSave.disabled = false;
+      btnAttendanceSave.textContent = "Save Attendance";
+    }
+  });
+}
+
+if (attendanceSetAll) {
+  attendanceSetAll.addEventListener("change", () => {
+    if (!attendanceSetAll.value) {
+      return;
+    }
+
+    const selects = attendanceTbody.querySelectorAll(
+      "select[data-attendance-status]",
+    );
+    selects.forEach((selectEl) => {
+      selectEl.value = attendanceSetAll.value;
+    });
+  });
+}
+
 if (btnEditSessionClose) {
   btnEditSessionClose.addEventListener("click", closeEditSessionModal);
 }
 
 if (btnEditSessionCancel) {
   btnEditSessionCancel.addEventListener("click", closeEditSessionModal);
+}
+
+if (btnAttendanceClose) {
+  btnAttendanceClose.addEventListener("click", closeAttendanceModal);
+}
+
+if (btnAttendanceCancel) {
+  btnAttendanceCancel.addEventListener("click", closeAttendanceModal);
 }
 
 if (editSessionModal) {
@@ -864,9 +1077,20 @@ if (editSessionModal) {
   });
 }
 
+if (attendanceModal) {
+  attendanceModal.addEventListener("click", (e) => {
+    if (e.target === attendanceModal) {
+      closeAttendanceModal();
+    }
+  });
+}
+
 document.addEventListener("keydown", (e) => {
   if (e.key === "Escape" && editSessionModal && !editSessionModal.classList.contains("hidden")) {
     closeEditSessionModal();
+  }
+  if (e.key === "Escape" && attendanceModal && !attendanceModal.classList.contains("hidden")) {
+    closeAttendanceModal();
   }
 });
 
@@ -954,6 +1178,9 @@ if (btnCalPrev) {
       1,
     );
     renderCalendar();
+    if (!viewDate.value) {
+      loadSchedule();
+    }
   });
 }
 
@@ -965,6 +1192,9 @@ if (btnCalNext) {
       1,
     );
     renderCalendar();
+    if (!viewDate.value) {
+      loadSchedule();
+    }
   });
 }
 
@@ -989,20 +1219,9 @@ async function init() {
     return;
   }
 
-  const cached = localStorage.getItem("swimsyncUser");
-  if (cached) {
-    try {
-      currentUser = JSON.parse(cached);
-    } catch {
-      /* ignore */
-    }
-  }
-
-  if (!currentUser) {
-    const res = await apiFetch("/api/me");
-    currentUser = await res.json();
-    localStorage.setItem("swimsyncUser", JSON.stringify(currentUser));
-  }
+  const res = await apiFetch("/api/me");
+  currentUser = await res.json();
+  localStorage.setItem("swimsyncUser", JSON.stringify(currentUser));
 
   userRoleBadge.textContent = currentUser.role.toUpperCase();
   userRoleBadge.className = `badge role-badge role-${currentUser.role}`;
@@ -1017,7 +1236,10 @@ async function init() {
     hide(sidebarSessionCard);
     hide(sidebarGroupCard);
     if (btnRemoveAll) hide(btnRemoveAll);
-    schedActionHeading.textContent = "Access";
+    schedActionHeading.textContent =
+      currentUser.role === "swimmer" || currentUser.role === "parent"
+        ? "Attendance"
+        : "Access";
   }
 
   await checkHealth();

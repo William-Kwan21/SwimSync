@@ -121,6 +121,40 @@ async function getVisibleGroupIdsForUser(user) {
   return [];
 }
 
+async function getAccessibleSwimmerIdsForUser(user) {
+  if (!user || !user.role) {
+    return [];
+  }
+
+  if (user.role === "admin" || user.role === "coach") {
+    return null;
+  }
+
+  if (user.role === "swimmer") {
+    const [rows] = await pool.query(
+      `SELECT s.id
+       FROM swimmers s
+       WHERE s.user_id = ?
+       LIMIT 1`,
+      [user.sub],
+    );
+    return rows.map((row) => row.id);
+  }
+
+  if (user.role === "parent") {
+    const [rows] = await pool.query(
+      `SELECT DISTINCT ps.swimmer_id
+       FROM parents p
+       JOIN parent_swimmers ps ON ps.parent_id = p.id
+       WHERE p.user_id = ?`,
+      [user.sub],
+    );
+    return rows.map((row) => row.swimmer_id);
+  }
+
+  return [];
+}
+
 app.use(express.json());
 app.use(express.static(path.join(__dirname, "public"), { index: false }));
 
@@ -543,11 +577,6 @@ app.get("/api/schedule", authenticate, async (req, res) => {
       return res.json([]);
     }
 
-    const baseQuery = `SELECT ps.id, ps.group_id, ps.practice_date, ps.start_time, ps.end_time, ps.location,
-              pg.group_name, pg.level
-       FROM practice_schedule ps
-       JOIN practice_groups pg ON ps.group_id = pg.id`;
-
     const whereClauses = [];
     const params = [];
 
@@ -569,12 +598,69 @@ app.get("/api/schedule", authenticate, async (req, res) => {
       ? "ORDER BY ps.start_time ASC"
       : "ORDER BY ps.practice_date ASC, ps.start_time ASC";
 
-    const [rows] = await pool.query(
-      `${baseQuery}
-           WHERE ${whereClauses.join(" AND ")}
-           ${orderSql}`,
-      params,
-    );
+    let rows;
+    if (req.user.role === "swimmer") {
+      const [swimmerRows] = await pool.query(
+        "SELECT id FROM swimmers WHERE user_id = ? LIMIT 1",
+        [req.user.sub],
+      );
+
+      if (swimmerRows.length === 0) {
+        return res.json([]);
+      }
+
+      const swimmerId = swimmerRows[0].id;
+      const [result] = await pool.query(
+        `SELECT ps.id, ps.group_id, ps.practice_date, ps.start_time, ps.end_time, ps.location,
+                pg.group_name, pg.level,
+                a.status AS my_attendance_status,
+                a.note AS my_attendance_note
+         FROM practice_schedule ps
+         JOIN practice_groups pg ON ps.group_id = pg.id
+         LEFT JOIN attendance a ON a.schedule_id = ps.id AND a.swimmer_id = ?
+         WHERE ${whereClauses.join(" AND ")}
+         ${orderSql}`,
+        [swimmerId, ...params],
+      );
+      rows = result;
+    } else if (req.user.role === "parent") {
+      const [result] = await pool.query(
+        `SELECT ps.id, ps.group_id, ps.practice_date, ps.start_time, ps.end_time, ps.location,
+                pg.group_name, pg.level,
+                GROUP_CONCAT(
+                  CASE
+                    WHEN swg.swimmer_id IS NULL THEN NULL
+                    ELSE CONCAT(swim_user.name, ': ', COALESCE(a.status, 'unmarked'))
+                  END
+                  ORDER BY swim_user.name ASC
+                  SEPARATOR ' | '
+                ) AS parent_attendance_summary
+         FROM practice_schedule ps
+         JOIN practice_groups pg ON ps.group_id = pg.id
+         LEFT JOIN parents p ON p.user_id = ?
+         LEFT JOIN parent_swimmers psw ON psw.parent_id = p.id
+         LEFT JOIN swimmers sw ON sw.id = psw.swimmer_id
+         LEFT JOIN swimmer_groups swg ON swg.swimmer_id = sw.id AND swg.group_id = ps.group_id
+         LEFT JOIN users swim_user ON swim_user.id = sw.user_id
+         LEFT JOIN attendance a ON a.schedule_id = ps.id AND a.swimmer_id = swg.swimmer_id
+         WHERE ${whereClauses.join(" AND ")}
+         GROUP BY ps.id, ps.group_id, ps.practice_date, ps.start_time, ps.end_time, ps.location, pg.group_name, pg.level
+         ${orderSql}`,
+        [req.user.sub, ...params],
+      );
+      rows = result;
+    } else {
+      const [result] = await pool.query(
+        `SELECT ps.id, ps.group_id, ps.practice_date, ps.start_time, ps.end_time, ps.location,
+                pg.group_name, pg.level
+         FROM practice_schedule ps
+         JOIN practice_groups pg ON ps.group_id = pg.id
+         WHERE ${whereClauses.join(" AND ")}
+         ${orderSql}`,
+        params,
+      );
+      rows = result;
+    }
 
     return res.json(rows);
   } catch (error) {
@@ -795,6 +881,192 @@ app.put(
       return res
         .status(500)
         .json({ message: "Failed to update session", error: error.message });
+    }
+  },
+);
+
+app.get("/api/attendance/summary", authenticate, async (req, res) => {
+  try {
+    const swimmerIds = await getAccessibleSwimmerIdsForUser(req.user);
+
+    if (!Array.isArray(swimmerIds)) {
+      return res.json([]);
+    }
+
+    if (swimmerIds.length === 0) {
+      return res.json([]);
+    }
+
+    const [rows] = await pool.query(
+      `SELECT s.id AS swimmer_id,
+              u.name AS swimmer_name,
+              SUM(CASE WHEN a.status = 'present' THEN 1 ELSE 0 END) AS present_count,
+              SUM(CASE WHEN a.status = 'late' THEN 1 ELSE 0 END) AS late_count,
+              SUM(CASE WHEN a.status = 'absent' THEN 1 ELSE 0 END) AS absent_count,
+              SUM(CASE WHEN a.status = 'excused' THEN 1 ELSE 0 END) AS excused_count,
+              SUM(CASE WHEN a.status IN ('present', 'late', 'absent', 'excused') THEN 1 ELSE 0 END) AS marked_count,
+              ROUND(
+                100 * SUM(CASE WHEN a.status IN ('present', 'late') THEN 1 ELSE 0 END) /
+                NULLIF(SUM(CASE WHEN a.status IN ('present', 'late', 'absent', 'excused') THEN 1 ELSE 0 END), 0),
+                1
+              ) AS attendance_rate
+       FROM swimmers s
+       JOIN users u ON u.id = s.user_id
+       LEFT JOIN attendance a ON a.swimmer_id = s.id
+       WHERE s.id IN (${swimmerIds.map(() => "?").join(",")})
+       GROUP BY s.id, u.name
+       ORDER BY u.name ASC`,
+      swimmerIds,
+    );
+
+    return res.json(rows);
+  } catch (error) {
+    return res.status(500).json({
+      message: "Failed to fetch attendance summary",
+      error: error.message,
+    });
+  }
+});
+
+app.get(
+  "/api/schedule/:id/attendance",
+  authenticate,
+  requireRole("admin", "coach"),
+  async (req, res) => {
+    const scheduleId = Number(req.params.id);
+    if (Number.isNaN(scheduleId)) {
+      return res.status(400).json({ message: "Invalid schedule id" });
+    }
+
+    try {
+      const [scheduleRows] = await pool.query(
+        "SELECT id, group_id FROM practice_schedule WHERE id = ? LIMIT 1",
+        [scheduleId],
+      );
+
+      if (scheduleRows.length === 0) {
+        return res.status(404).json({ message: "Session not found" });
+      }
+
+      const groupId = scheduleRows[0].group_id;
+      const [rows] = await pool.query(
+        `SELECT s.id AS swimmer_id,
+                u.name,
+                u.email,
+                COALESCE(a.status, 'unmarked') AS status,
+                a.note
+         FROM swimmer_groups sg
+         JOIN swimmers s ON s.id = sg.swimmer_id
+         JOIN users u ON u.id = s.user_id
+         LEFT JOIN attendance a ON a.schedule_id = ? AND a.swimmer_id = s.id
+         WHERE sg.group_id = ?
+         ORDER BY u.name ASC`,
+        [scheduleId, groupId],
+      );
+
+      return res.json({ schedule_id: scheduleId, swimmers: rows });
+    } catch (error) {
+      return res.status(500).json({
+        message: "Failed to fetch attendance roster",
+        error: error.message,
+      });
+    }
+  },
+);
+
+app.put(
+  "/api/schedule/:id/attendance",
+  authenticate,
+  requireRole("admin", "coach"),
+  async (req, res) => {
+    const scheduleId = Number(req.params.id);
+    const entries = Array.isArray(req.body.entries) ? req.body.entries : [];
+
+    if (Number.isNaN(scheduleId)) {
+      return res.status(400).json({ message: "Invalid schedule id" });
+    }
+
+    if (!entries.length) {
+      return res.status(400).json({ message: "entries are required" });
+    }
+
+    const validStatuses = new Set([
+      "present",
+      "absent",
+      "late",
+      "excused",
+      "unmarked",
+    ]);
+
+    const connection = await pool.getConnection();
+    try {
+      const [scheduleRows] = await connection.query(
+        "SELECT id, group_id FROM practice_schedule WHERE id = ? LIMIT 1",
+        [scheduleId],
+      );
+
+      if (scheduleRows.length === 0) {
+        return res.status(404).json({ message: "Session not found" });
+      }
+
+      const groupId = scheduleRows[0].group_id;
+      const [allowedRows] = await connection.query(
+        "SELECT swimmer_id FROM swimmer_groups WHERE group_id = ?",
+        [groupId],
+      );
+      const allowedSwimmerIds = new Set(
+        allowedRows.map((row) => Number(row.swimmer_id)),
+      );
+
+      await connection.beginTransaction();
+
+      for (const entry of entries) {
+        const swimmerId = Number(entry && entry.swimmer_id);
+        const status = String(entry && entry.status ? entry.status : "").trim();
+        const note = entry && typeof entry.note === "string" ? entry.note.trim() : null;
+
+        if (!Number.isInteger(swimmerId) || !allowedSwimmerIds.has(swimmerId)) {
+          await connection.rollback();
+          return res.status(400).json({
+            message: `Invalid swimmer for session group: ${entry && entry.swimmer_id}`,
+          });
+        }
+
+        if (!validStatuses.has(status)) {
+          await connection.rollback();
+          return res.status(400).json({
+            message: `Invalid attendance status: ${status}`,
+          });
+        }
+
+        if (status === "unmarked") {
+          await connection.query(
+            "DELETE FROM attendance WHERE schedule_id = ? AND swimmer_id = ?",
+            [scheduleId, swimmerId],
+          );
+          continue;
+        }
+
+        await connection.query(
+          `INSERT INTO attendance (swimmer_id, schedule_id, status, note)
+           VALUES (?, ?, ?, ?)
+           ON DUPLICATE KEY UPDATE
+             status = VALUES(status),
+             note = VALUES(note)`,
+          [swimmerId, scheduleId, status, note || null],
+        );
+      }
+
+      await connection.commit();
+      return res.json({ message: "Attendance saved" });
+    } catch (error) {
+      await connection.rollback();
+      return res.status(500).json({
+        message: "Failed to save attendance",
+        error: error.message,
+      });
+    } finally {
+      connection.release();
     }
   },
 );

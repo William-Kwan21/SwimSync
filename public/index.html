@@ -55,6 +55,31 @@
       <div id="role-description" class="state-msg info">Checking role permissions&hellip;</div>
     </section>
 
+    <section id="attendance-card" class="card hidden">
+      <div class="card-header">
+        <h2>Attendance Summary</h2>
+      </div>
+      <div id="attendance-loading" class="state-msg">Loading attendance&hellip;</div>
+      <div id="attendance-error" class="state-msg error hidden"></div>
+      <div id="attendance-empty" class="state-msg hidden">No attendance records yet.</div>
+      <div class="table-wrap">
+        <table id="attendance-table" class="hidden">
+          <thead>
+            <tr>
+              <th>Swimmer</th>
+              <th>Present</th>
+              <th>Late</th>
+              <th>Absent</th>
+              <th>Excused</th>
+              <th>Marked</th>
+              <th>Rate</th>
+            </tr>
+          </thead>
+          <tbody id="attendance-tbody"></tbody>
+        </table>
+      </div>
+    </section>
+
     <section id="add-user-card" class="card hidden">
       <div class="card-header">
         <h2>Add User</h2>

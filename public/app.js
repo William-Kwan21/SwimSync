@@ -17,6 +17,12 @@ const addUserCard = document.getElementById("add-user-card");
 const addUserForm = document.getElementById("add-user-form");
 const addUserStatus = document.getElementById("add-user-status");
 const addUserButton = document.getElementById("btn-add-user");
+const attendanceCard = document.getElementById("attendance-card");
+const attendanceLoading = document.getElementById("attendance-loading");
+const attendanceError = document.getElementById("attendance-error");
+const attendanceEmpty = document.getElementById("attendance-empty");
+const attendanceTable = document.getElementById("attendance-table");
+const attendanceTbody = document.getElementById("attendance-tbody");
 
 let currentUser = null;
 
@@ -123,6 +129,59 @@ function applyRoleUI() {
     hide(addUserCard);
     usersSectionTitle.textContent = "My Account";
     actionColumnHeading.textContent = "Access";
+  }
+
+  if (currentUser.role === "swimmer" || currentUser.role === "parent") {
+    show(attendanceCard);
+  } else {
+    hide(attendanceCard);
+  }
+}
+
+async function loadAttendanceSummary() {
+  if (!currentUser || (currentUser.role !== "swimmer" && currentUser.role !== "parent")) {
+    return;
+  }
+
+  hide(attendanceError);
+  hide(attendanceEmpty);
+  hide(attendanceTable);
+  show(attendanceLoading);
+
+  try {
+    const res = await apiFetch("/api/attendance/summary");
+    if (!res.ok) {
+      throw new Error(`Server error: ${res.status}`);
+    }
+
+    const rows = await res.json();
+    attendanceTbody.innerHTML = "";
+
+    if (!rows.length) {
+      hide(attendanceLoading);
+      show(attendanceEmpty);
+      return;
+    }
+
+    attendanceTbody.innerHTML = rows
+      .map(
+        (row) => `<tr>
+          <td>${escHtml(row.swimmer_name)}</td>
+          <td>${Number(row.present_count) || 0}</td>
+          <td>${Number(row.late_count) || 0}</td>
+          <td>${Number(row.absent_count) || 0}</td>
+          <td>${Number(row.excused_count) || 0}</td>
+          <td>${Number(row.marked_count) || 0}</td>
+          <td>${row.attendance_rate == null ? "—" : `${Number(row.attendance_rate).toFixed(1)}%`}</td>
+        </tr>`,
+      )
+      .join("");
+
+    hide(attendanceLoading);
+    show(attendanceTable);
+  } catch (err) {
+    hide(attendanceLoading);
+    showError(attendanceError, `Failed to load attendance summary: ${err.message}`);
   }
 }
 
@@ -320,6 +379,7 @@ async function init() {
 
   await checkHealth();
   await fetchCurrentUser();
+  await loadAttendanceSummary();
   await loadUsers();
 }
 

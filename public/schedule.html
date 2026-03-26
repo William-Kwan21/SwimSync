@@ -209,6 +209,47 @@
       </div>
     </div>
 
+    <div class="modal-backdrop hidden" id="attendance-modal" role="dialog" aria-modal="true" aria-labelledby="attendance-title">
+      <div class="modal-card">
+        <div class="modal-header">
+          <h3 id="attendance-title">Take Attendance</h3>
+          <button class="btn btn-secondary" id="btn-attendance-close" type="button" aria-label="Close attendance popup">Close</button>
+        </div>
+        <form id="attendance-form" class="form-grid" autocomplete="off">
+          <input id="attendance-session-id" type="hidden" />
+          <div id="attendance-session-label" class="state-msg info form-row-full">Session</div>
+          <div class="form-row form-row-full">
+            <label for="attendance-set-all">Set all swimmers to</label>
+            <select id="attendance-set-all">
+              <option value="">Choose status...</option>
+              <option value="unmarked">Unmarked</option>
+              <option value="present">Present</option>
+              <option value="late">Late</option>
+              <option value="absent">Absent</option>
+              <option value="excused">Excused</option>
+            </select>
+          </div>
+          <div class="table-wrap form-row-full">
+            <table id="attendance-table">
+              <thead>
+                <tr>
+                  <th>Swimmer</th>
+                  <th>Status</th>
+                  <th>Note</th>
+                </tr>
+              </thead>
+              <tbody id="attendance-tbody"></tbody>
+            </table>
+          </div>
+          <div id="attendance-error" class="state-msg error hidden form-row-full"></div>
+          <div class="form-row form-row-full modal-actions">
+            <button class="btn btn-secondary" id="btn-attendance-cancel" type="button">Cancel</button>
+            <button class="btn btn-primary" id="btn-attendance-save" type="submit">Save Attendance</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
     <script src="schedule.js"></script>
   </body>
 </html>
