@@ -8,6 +8,7 @@ const scheduleTable = document.getElementById("schedule-table");
 const scheduleTbody = document.getElementById("schedule-tbody");
 const scheduleLoading = document.getElementById("schedule-loading");
 const scheduleError = document.getElementById("schedule-error");
+const scheduleNotice = document.getElementById("schedule-notice");
 const scheduleEmpty = document.getElementById("schedule-empty");
 const schedActionHeading = document.getElementById("sched-action-heading");
 const viewDate = document.getElementById("view-date");
@@ -40,9 +41,24 @@ const sidebarGroupLevel = document.getElementById("sidebar-group-level");
 const sidebarGroupError = document.getElementById("sidebar-group-error");
 const btnSidebarAddGroup = document.getElementById("btn-sidebar-add-group");
 
+const editSessionModal = document.getElementById("edit-session-modal");
+const editSessionForm = document.getElementById("edit-session-form");
+const editSessionId = document.getElementById("edit-session-id");
+const editSessionGroup = document.getElementById("edit-session-group");
+const editSessionDate = document.getElementById("edit-session-date");
+const editSessionStart = document.getElementById("edit-session-start");
+const editSessionEnd = document.getElementById("edit-session-end");
+const editSessionLocation = document.getElementById("edit-session-location");
+const editSessionError = document.getElementById("edit-session-error");
+const btnEditSessionClose = document.getElementById("btn-edit-session-close");
+const btnEditSessionCancel = document.getElementById("btn-edit-session-cancel");
+const btnEditSessionSave = document.getElementById("btn-edit-session-save");
+
 let currentUser = null;
 let sessionsById = new Map();
 let calendarCursor = new Date();
+let practiceGroups = [];
+let scheduleNoticeTimer = null;
 
 /* ── helpers ── */
 function show(el) {
@@ -77,6 +93,22 @@ function escHtml(str) {
 function showErr(el, msg) {
   el.textContent = msg;
   show(el);
+}
+
+function showScheduleNotice(msg) {
+  if (!scheduleNotice) return;
+  if (scheduleNoticeTimer) {
+    clearTimeout(scheduleNoticeTimer);
+    scheduleNoticeTimer = null;
+  }
+  scheduleNotice.textContent = msg;
+  scheduleNotice.classList.remove("error");
+  scheduleNotice.classList.add("info");
+  show(scheduleNotice);
+  scheduleNoticeTimer = setTimeout(() => {
+    hide(scheduleNotice);
+    scheduleNoticeTimer = null;
+  }, 2800);
 }
 
 function syncRepeatDaysVisibility() {
@@ -412,16 +444,22 @@ async function checkHealth() {
 async function loadGroups() {
   try {
     const res = await apiFetch("/api/practice-groups");
-    const groups = await res.json();
-    const opts = groups
+    practiceGroups = await res.json();
+    const opts = practiceGroups
       .map(
         (g) =>
           `<option value="${g.id}">${escHtml(g.group_name)} (${escHtml(g.level || "—")})</option>`,
       )
       .join("");
     sidebarSelGroup.innerHTML = opts || `<option value="">No groups</option>`;
+    if (editSessionGroup) {
+      editSessionGroup.innerHTML = opts || `<option value="">No groups</option>`;
+    }
   } catch {
     sidebarSelGroup.innerHTML = `<option value="">Error loading</option>`;
+    if (editSessionGroup) {
+      editSessionGroup.innerHTML = `<option value="">Error loading</option>`;
+    }
   }
 }
 
@@ -542,25 +580,52 @@ async function editSession(sessionId) {
     return;
   }
 
-  const nextDate = prompt(
-    "Practice date (YYYY-MM-DD)",
-    toDateInputValue(session.practice_date),
-  );
-  if (nextDate === null) return;
-  const nextStart = prompt(
-    "Start time (HH:MM)",
-    toTimeInputValue(session.start_time),
-  );
-  if (nextStart === null) return;
-  const nextEnd = prompt(
-    "End time (HH:MM)",
-    toTimeInputValue(session.end_time),
-  );
-  if (nextEnd === null) return;
-  const nextLocation = prompt("Location", session.location || "") ?? "";
+  hide(editSessionError);
+  editSessionError.classList.remove("info");
+  editSessionError.classList.add("error");
 
-  if (!nextDate || !nextStart || !nextEnd) {
-    alert("Date, start time, and end time are required.");
+  editSessionId.value = String(session.id);
+  editSessionDate.value = toDateInputValue(session.practice_date);
+  editSessionStart.value = toTimeInputValue(session.start_time);
+  editSessionEnd.value = toTimeInputValue(session.end_time);
+  editSessionLocation.value = session.location || "";
+
+  if (editSessionGroup && practiceGroups.length) {
+    editSessionGroup.value = String(session.group_id);
+  }
+
+  openEditSessionModal();
+}
+
+function openEditSessionModal() {
+  if (!editSessionModal) return;
+  show(editSessionModal);
+  document.body.style.overflow = "hidden";
+  editSessionDate.focus();
+}
+
+function closeEditSessionModal() {
+  if (!editSessionModal) return;
+  hide(editSessionModal);
+  document.body.style.overflow = "";
+  editSessionForm.reset();
+  hide(editSessionError);
+}
+
+async function submitSessionEdit() {
+  const sessionId = editSessionId.value;
+  const nextGroupId = Number(editSessionGroup.value);
+  const nextDate = editSessionDate.value;
+  const nextStart = editSessionStart.value;
+  const nextEnd = editSessionEnd.value;
+  const nextLocation = editSessionLocation.value.trim();
+
+  hide(editSessionError);
+  editSessionError.classList.remove("info");
+  editSessionError.classList.add("error");
+
+  if (!sessionId || !nextDate || !nextStart || !nextEnd || !nextGroupId) {
+    showErr(editSessionError, "Group, date, start time, and end time are required.");
     return;
   }
 
@@ -569,23 +634,28 @@ async function editSession(sessionId) {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        group_id: session.group_id,
+        group_id: nextGroupId,
         practice_date: nextDate,
         start_time: nextStart,
         end_time: nextEnd,
-        location: nextLocation.trim(),
+        location: nextLocation,
       }),
     });
 
     if (!response.ok) {
       const data = await safeJson(response);
-      alert(`Failed to update: ${(data && data.message) || response.status}`);
+      showErr(
+        editSessionError,
+        `Failed to update: ${(data && data.message) || response.status}`,
+      );
       return;
     }
 
+    closeEditSessionModal();
     await loadSchedule();
+    showScheduleNotice("Session updated successfully.");
   } catch (err) {
-    alert(`Error updating session: ${err.message}`);
+    showErr(editSessionError, `Error updating session: ${err.message}`);
   }
 }
 
@@ -761,6 +831,42 @@ sidebarGroupForm.addEventListener("submit", async (e) => {
   } finally {
     btnSidebarAddGroup.disabled = false;
     btnSidebarAddGroup.textContent = "Create";
+  }
+});
+
+if (editSessionForm) {
+  editSessionForm.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    btnEditSessionSave.disabled = true;
+    btnEditSessionSave.textContent = "Saving...";
+    try {
+      await submitSessionEdit();
+    } finally {
+      btnEditSessionSave.disabled = false;
+      btnEditSessionSave.textContent = "Save Changes";
+    }
+  });
+}
+
+if (btnEditSessionClose) {
+  btnEditSessionClose.addEventListener("click", closeEditSessionModal);
+}
+
+if (btnEditSessionCancel) {
+  btnEditSessionCancel.addEventListener("click", closeEditSessionModal);
+}
+
+if (editSessionModal) {
+  editSessionModal.addEventListener("click", (e) => {
+    if (e.target === editSessionModal) {
+      closeEditSessionModal();
+    }
+  });
+}
+
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && editSessionModal && !editSessionModal.classList.contains("hidden")) {
+    closeEditSessionModal();
   }
 });
 

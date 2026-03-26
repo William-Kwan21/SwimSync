@@ -65,6 +65,41 @@ function requireRole(...allowedRoles) {
   };
 }
 
+async function getVisibleGroupIdsForUser(user) {
+  if (!user || !user.role) {
+    return [];
+  }
+
+  if (user.role === "admin" || user.role === "coach") {
+    return null;
+  }
+
+  if (user.role === "swimmer") {
+    const [rows] = await pool.query(
+      `SELECT DISTINCT sg.group_id
+       FROM swimmers s
+       JOIN swimmer_groups sg ON sg.swimmer_id = s.id
+       WHERE s.user_id = ?`,
+      [user.sub],
+    );
+    return rows.map((row) => row.group_id);
+  }
+
+  if (user.role === "parent") {
+    const [rows] = await pool.query(
+      `SELECT DISTINCT sg.group_id
+       FROM parents p
+       JOIN parent_swimmers ps ON ps.parent_id = p.id
+       JOIN swimmer_groups sg ON sg.swimmer_id = ps.swimmer_id
+       WHERE p.user_id = ?`,
+      [user.sub],
+    );
+    return rows.map((row) => row.group_id);
+  }
+
+  return [];
+}
+
 app.use(express.json());
 app.use(express.static(path.join(__dirname, "public"), { index: false }));
 
@@ -393,16 +428,32 @@ app.get("/team", (_req, res) => {
 });
 
 /* ── practice groups ── */
-app.get("/api/practice-groups", authenticate, async (_req, res) => {
+app.get("/api/practice-groups", authenticate, async (req, res) => {
   try {
-    const [rows] = await pool.query(
-      `SELECT pg.id, pg.group_name, pg.level,
+    const visibleGroupIds = await getVisibleGroupIdsForUser(req.user);
+
+    if (Array.isArray(visibleGroupIds) && visibleGroupIds.length === 0) {
+      return res.json([]);
+    }
+
+    const selectSql = `SELECT pg.id, pg.group_name, pg.level,
               u.name AS coach_name
        FROM practice_groups pg
        LEFT JOIN coaches c ON pg.coach_id = c.id
-       LEFT JOIN users u ON c.user_id = u.id
+       LEFT JOIN users u ON c.user_id = u.id`;
+
+    const [rows] = Array.isArray(visibleGroupIds)
+      ? await pool.query(
+          `${selectSql}
+       WHERE pg.id IN (${visibleGroupIds.map(() => "?").join(",")})
        ORDER BY pg.group_name ASC`,
-    );
+          visibleGroupIds,
+        )
+      : await pool.query(
+          `${selectSql}
+       ORDER BY pg.group_name ASC`,
+        );
+
     return res.json(rows);
   } catch (error) {
     return res.status(500).json({
@@ -454,8 +505,8 @@ app.post(
 );
 
 /* ── practice schedule ── */
-app.get("/api/schedule", authenticate, async (_req, res) => {
-  const requestedDate = (_req.query && _req.query.date) || null;
+app.get("/api/schedule", authenticate, async (req, res) => {
+  const requestedDate = (req.query && req.query.date) || null;
   const hasDateFilter =
     typeof requestedDate === "string" && requestedDate.trim() !== "";
 
@@ -466,23 +517,43 @@ app.get("/api/schedule", authenticate, async (_req, res) => {
   }
 
   try {
+    const visibleGroupIds = await getVisibleGroupIdsForUser(req.user);
+    if (Array.isArray(visibleGroupIds) && visibleGroupIds.length === 0) {
+      return res.json([]);
+    }
+
     const baseQuery = `SELECT ps.id, ps.group_id, ps.practice_date, ps.start_time, ps.end_time, ps.location,
               pg.group_name, pg.level
        FROM practice_schedule ps
        JOIN practice_groups pg ON ps.group_id = pg.id`;
 
-    const [rows] = hasDateFilter
-      ? await pool.query(
-          `${baseQuery}
-           WHERE ps.practice_date = ?
-           ORDER BY ps.start_time ASC`,
-          [requestedDate],
-        )
-      : await pool.query(
-          `${baseQuery}
-           WHERE ps.practice_date >= CURDATE()
-           ORDER BY ps.practice_date ASC, ps.start_time ASC`,
-        );
+    const whereClauses = [];
+    const params = [];
+
+    if (hasDateFilter) {
+      whereClauses.push("ps.practice_date = ?");
+      params.push(requestedDate);
+    } else {
+      whereClauses.push("ps.practice_date >= CURDATE()");
+    }
+
+    if (Array.isArray(visibleGroupIds)) {
+      whereClauses.push(
+        `ps.group_id IN (${visibleGroupIds.map(() => "?").join(",")})`,
+      );
+      params.push(...visibleGroupIds);
+    }
+
+    const orderSql = hasDateFilter
+      ? "ORDER BY ps.start_time ASC"
+      : "ORDER BY ps.practice_date ASC, ps.start_time ASC";
+
+    const [rows] = await pool.query(
+      `${baseQuery}
+           WHERE ${whereClauses.join(" AND ")}
+           ${orderSql}`,
+      params,
+    );
 
     return res.json(rows);
   } catch (error) {

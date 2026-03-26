@@ -147,6 +147,7 @@
           Loading schedule&hellip;
         </div>
         <div id="schedule-error" class="state-msg error hidden"></div>
+        <div id="schedule-notice" class="state-msg info hidden"></div>
         <div id="schedule-empty" class="state-msg hidden">
           No sessions scheduled yet.
         </div>
@@ -169,6 +170,43 @@
         </div>
       </section>
       </main>
+    </div>
+
+    <div class="modal-backdrop hidden" id="edit-session-modal" role="dialog" aria-modal="true" aria-labelledby="edit-session-title">
+      <div class="modal-card">
+        <div class="modal-header">
+          <h3 id="edit-session-title">Edit Session</h3>
+          <button class="btn btn-secondary" id="btn-edit-session-close" type="button" aria-label="Close edit session popup">Close</button>
+        </div>
+        <form id="edit-session-form" class="form-grid" autocomplete="off">
+          <input id="edit-session-id" type="hidden" />
+          <div class="form-row">
+            <label for="edit-session-group">Group</label>
+            <select id="edit-session-group" required></select>
+          </div>
+          <div class="form-row">
+            <label for="edit-session-date">Date</label>
+            <input id="edit-session-date" type="date" required />
+          </div>
+          <div class="form-row">
+            <label for="edit-session-start">Start Time</label>
+            <input id="edit-session-start" type="time" required />
+          </div>
+          <div class="form-row">
+            <label for="edit-session-end">End Time</label>
+            <input id="edit-session-end" type="time" required />
+          </div>
+          <div class="form-row form-row-full">
+            <label for="edit-session-location">Location</label>
+            <input id="edit-session-location" type="text" placeholder="Main Pool" />
+          </div>
+          <div id="edit-session-error" class="state-msg error hidden form-row-full"></div>
+          <div class="form-row form-row-full modal-actions">
+            <button class="btn btn-secondary" id="btn-edit-session-cancel" type="button">Cancel</button>
+            <button class="btn btn-primary" id="btn-edit-session-save" type="submit">Save Changes</button>
+          </div>
+        </form>
+      </div>
     </div>
 
     <script src="schedule.js"></script>
