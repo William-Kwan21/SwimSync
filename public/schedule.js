@@ -483,6 +483,54 @@ async function apiFetch(url, options = {}) {
   return response;
 }
 
+function initTomSelectForElement(selectEl) {
+  if (!selectEl || selectEl.hasAttribute("data-no-theme")) {
+    return;
+  }
+
+  if (typeof TomSelect === "undefined") {
+    return;
+  }
+
+  if (selectEl.tomselect) {
+    return;
+  }
+
+  selectEl.dataset.uiEnhanced = "true";
+  new TomSelect(selectEl, {
+    create: false,
+    allowEmptyOption: true,
+    maxOptions: 250,
+    searchField: ["text"],
+    dropdownParent: "body",
+    copyClassesToDropdown: true,
+  });
+}
+
+function resetSelectOptions(selectEl, optionsMarkup) {
+  if (!selectEl) return;
+
+  const currentValue = selectEl.value;
+
+  if (selectEl.tomselect) {
+    selectEl.tomselect.destroy();
+  }
+
+  delete selectEl.dataset.uiEnhanced;
+  selectEl.innerHTML = optionsMarkup;
+
+  if (currentValue) {
+    const hasCurrentValue = Array.from(selectEl.options).some(
+      (opt) => String(opt.value) === String(currentValue),
+    );
+    if (hasCurrentValue) {
+      selectEl.value = currentValue;
+    }
+  }
+
+  initTomSelectForElement(selectEl);
+}
+
 /* ── health check ── */
 async function checkHealth() {
   try {
@@ -507,14 +555,15 @@ async function loadGroups() {
           `<option value="${g.id}">${escHtml(g.group_name)} (${escHtml(g.level || "—")})</option>`,
       )
       .join("");
-    sidebarSelGroup.innerHTML = opts || `<option value="">No groups</option>`;
+    const fallbackOptions = opts || `<option value="">No groups</option>`;
+    resetSelectOptions(sidebarSelGroup, fallbackOptions);
     if (editSessionGroup) {
-      editSessionGroup.innerHTML = opts || `<option value="">No groups</option>`;
+      resetSelectOptions(editSessionGroup, fallbackOptions);
     }
   } catch {
-    sidebarSelGroup.innerHTML = `<option value="">Error loading</option>`;
+    resetSelectOptions(sidebarSelGroup, `<option value="">Error loading</option>`);
     if (editSessionGroup) {
-      editSessionGroup.innerHTML = `<option value="">Error loading</option>`;
+      resetSelectOptions(editSessionGroup, `<option value="">Error loading</option>`);
     }
   }
 }
@@ -681,11 +730,29 @@ async function openAttendanceModal(sessionId) {
   try {
     const res = await apiFetch(`/api/schedule/${session.id}/attendance`);
     const data = await safeJson(res);
-    if (!res.ok) {
-      throw new Error((data && data.message) || `Failed (${res.status})`);
+    let swimmers = [];
+
+    if (res.ok) {
+      swimmers = data && Array.isArray(data.swimmers) ? data.swimmers : [];
     }
 
-    const swimmers = (data && Array.isArray(data.swimmers)) ? data.swimmers : [];
+    // Legacy backend fallback: load roster from /api/team if attendance route is unavailable or empty.
+    if (!swimmers.length) {
+      const teamRes = await apiFetch("/api/team");
+      const teamData = await safeJson(teamRes);
+      if (teamRes.ok && teamData && Array.isArray(teamData.swimmers)) {
+        swimmers = teamData.swimmers
+          .filter((swimmer) => Number(swimmer.group_id) === Number(session.group_id))
+          .map((swimmer) => ({
+            swimmer_id: swimmer.swimmer_id,
+            name: swimmer.name,
+            email: swimmer.email,
+            status: "unmarked",
+            note: "",
+          }));
+      }
+    }
+
     if (!swimmers.length) {
       attendanceTbody.innerHTML = `<tr><td colspan="3" class="muted-inline">No swimmers assigned to this group.</td></tr>`;
       attendanceSessionLabel.textContent = `${formatDate(session.practice_date)} - ${session.group_name} (0 swimmers)`;
@@ -699,7 +766,7 @@ async function openAttendanceModal(sessionId) {
         (swimmer) => `<tr data-swimmer-id="${swimmer.swimmer_id}">
           <td>${escHtml(swimmer.name)}</td>
           <td>
-            <select data-attendance-status="${swimmer.swimmer_id}">
+            <select data-attendance-status="${swimmer.swimmer_id}" data-no-theme="true">
               ${attendanceOptions(swimmer.status)}
             </select>
           </td>
