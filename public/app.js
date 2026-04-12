@@ -71,6 +71,22 @@ function showStatus(el, msg, type = "info") {
   }
 }
 
+async function themedAlert(message, title = "Notice") {
+  if (window.uiPopup && typeof window.uiPopup.alert === "function") {
+    await window.uiPopup.alert(message, title);
+  } else {
+    console.warn("uiPopup.alert unavailable:", title, message);
+  }
+}
+
+async function themedConfirm(message, title = "Please Confirm") {
+  if (window.uiPopup && typeof window.uiPopup.confirm === "function") {
+    return window.uiPopup.confirm(message, title);
+  }
+  console.warn("uiPopup.confirm unavailable:", title, message);
+  return false;
+}
+
 function formatDate(iso) {
   if (!iso) return "—";
   const d = new Date(iso);
@@ -270,7 +286,7 @@ usersTbody.addEventListener("click", async (e) => {
   }
 
   const userId = btn.dataset.id;
-  if (!confirm("Remove this user?")) {
+  if (!(await themedConfirm("Remove this user?", "Delete User"))) {
     return;
   }
 
@@ -282,7 +298,10 @@ usersTbody.addEventListener("click", async (e) => {
 
     if (!res.ok) {
       const data = await safeJson(res);
-      alert(`Failed to remove user: ${(data && data.message) || res.status}`);
+      await themedAlert(
+        `Failed to remove user: ${(data && data.message) || res.status}`,
+        "Delete Failed",
+      );
       btn.disabled = false;
       btn.textContent = "Remove";
       return;
@@ -298,7 +317,7 @@ usersTbody.addEventListener("click", async (e) => {
       show(usersEmpty);
     }
   } catch (err) {
-    alert(`Network error: ${err.message}`);
+    await themedAlert(`Network error: ${err.message}`, "Network Error");
     btn.disabled = false;
     btn.textContent = "Remove";
   }

@@ -122,6 +122,22 @@ function showScheduleNotice(msg) {
   }, 2800);
 }
 
+async function themedAlert(message, title = "Notice") {
+  if (window.uiPopup && typeof window.uiPopup.alert === "function") {
+    await window.uiPopup.alert(message, title);
+  } else {
+    console.warn("uiPopup.alert unavailable:", title, message);
+  }
+}
+
+async function themedConfirm(message, title = "Please Confirm") {
+  if (window.uiPopup && typeof window.uiPopup.confirm === "function") {
+    return window.uiPopup.confirm(message, title);
+  }
+  console.warn("uiPopup.confirm unavailable:", title, message);
+  return false;
+}
+
 function syncRepeatDaysVisibility() {
   if (
     !sidebarRepeatDaysRow ||
@@ -424,6 +440,10 @@ function syncCalendarMonthToSelectedDate() {
 
 function openViewDateCalendar() {
   if (!viewDate) return;
+  if (viewDate._flatpickr) {
+    viewDate._flatpickr.open();
+    return;
+  }
   if (typeof viewDate.showPicker === "function") {
     viewDate.showPicker();
     return;
@@ -610,7 +630,7 @@ scheduleTbody.addEventListener("click", async (e) => {
     return;
   }
   if (btn.dataset.action !== "remove") return;
-  if (!confirm("Remove this session?")) return;
+  if (!(await themedConfirm("Remove this session?", "Delete Session"))) return;
 
   btn.disabled = true;
   btn.textContent = "Removing…";
@@ -621,14 +641,17 @@ scheduleTbody.addEventListener("click", async (e) => {
     });
     if (!res.ok) {
       const data = await safeJson(res);
-      alert(`Failed: ${(data && data.message) || res.status}`);
+      await themedAlert(
+        `Failed: ${(data && data.message) || res.status}`,
+        "Delete Failed",
+      );
       btn.disabled = false;
       btn.textContent = "Remove";
       return;
     }
     await loadSchedule();
   } catch (err) {
-    alert(`Error: ${err.message}`);
+    await themedAlert(`Error: ${err.message}`, "Delete Failed");
     btn.disabled = false;
     btn.textContent = "Remove";
   }
@@ -637,7 +660,10 @@ scheduleTbody.addEventListener("click", async (e) => {
 async function openAttendanceModal(sessionId) {
   const session = sessionsById.get(String(sessionId));
   if (!session) {
-    alert("Session data is out of date. Please refresh and try again.");
+    await themedAlert(
+      "Session data is out of date. Please refresh and try again.",
+      "Session Not Found",
+    );
     return;
   }
 
@@ -752,7 +778,10 @@ async function submitAttendance() {
 async function editSession(sessionId) {
   const session = sessionsById.get(String(sessionId));
   if (!session) {
-    alert("Session data is out of date. Please refresh and try again.");
+    await themedAlert(
+      "Session data is out of date. Please refresh and try again.",
+      "Session Not Found",
+    );
     return;
   }
 
@@ -1109,8 +1138,9 @@ btnClearDate.addEventListener("click", () => {
 
 if (btnRemoveAll) {
   btnRemoveAll.addEventListener("click", async () => {
-    const approved = confirm(
+    const approved = await themedConfirm(
       "Remove ALL scheduled sessions? This cannot be undone.",
+      "Remove All Sessions",
     );
     if (!approved) return;
 
@@ -1127,8 +1157,9 @@ if (btnRemoveAll) {
           const listRes = await apiFetch("/api/schedule");
           const list = await safeJson(listRes);
           if (!listRes.ok || !Array.isArray(list)) {
-            alert(
+            await themedAlert(
               `Failed to remove sessions: ${(data && data.message) || res.status}`,
+              "Remove Failed",
             );
             return;
           }
@@ -1145,24 +1176,32 @@ if (btnRemoveAll) {
             }
           }
 
-          alert(
+          await themedAlert(
             `Removed ${removedCount} session${removedCount === 1 ? "" : "s"}.`,
+            "Sessions Removed",
           );
           await loadSchedule();
           return;
         }
 
-        alert(
+        await themedAlert(
           `Failed to remove sessions: ${(data && data.message) || res.status}`,
+          "Remove Failed",
         );
         return;
       }
 
       const removed = Number(data && data.deleted_count) || 0;
-      alert(`Removed ${removed} session${removed === 1 ? "" : "s"}.`);
+      await themedAlert(
+        `Removed ${removed} session${removed === 1 ? "" : "s"}.`,
+        "Sessions Removed",
+      );
       await loadSchedule();
     } catch (err) {
-      alert(`Error removing sessions: ${err.message}`);
+      await themedAlert(
+        `Error removing sessions: ${err.message}`,
+        "Remove Failed",
+      );
     } finally {
       btnRemoveAll.disabled = false;
       btnRemoveAll.textContent = previousLabel;
