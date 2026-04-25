@@ -3,6 +3,9 @@ const signupName = document.getElementById("signup-name");
 const signupEmail = document.getElementById("signup-email");
 const signupPassword = document.getElementById("signup-password");
 const signupRole = document.getElementById("signup-role");
+const signupGender = document.getElementById("signup-gender");
+const signupDob = document.getElementById("signup-dob");
+const signupAddress = document.getElementById("signup-address");
 const signupError = document.getElementById("signup-error");
 const signupSuccess = document.getElementById("signup-success");
 const btnSignup = document.getElementById("btn-signup");
@@ -46,7 +49,10 @@ signupForm.addEventListener("submit", async (event) => {
         name: signupName.value.trim(),
         email: signupEmail.value.trim(),
         password: signupPassword.value,
-        role: signupRole.value
+        role: signupRole.value,
+        gender: signupGender.value,
+        date_of_birth: signupDob.value,
+        address: signupAddress.value.trim(),
       })
     });
 

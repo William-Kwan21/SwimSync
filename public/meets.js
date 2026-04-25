@@ -370,13 +370,20 @@ async function loadSwimmerOptionsForManualTime() {
   }
 
   try {
-    const res = await apiFetch("/api/team");
-    if (!res.ok) {
-      throw new Error(`Server error: ${res.status}`);
-    }
+    let swimmers = [];
 
-    const data = await res.json();
-    const swimmers = Array.isArray(data && data.swimmers) ? data.swimmers : [];
+    const optionsRes = await apiFetch("/api/swimmers/options");
+    if (optionsRes.ok) {
+      const optionsData = await optionsRes.json();
+      swimmers = Array.isArray(optionsData) ? optionsData : [];
+    } else {
+      const res = await apiFetch("/api/team");
+      if (!res.ok) {
+        throw new Error(`Server error: ${res.status}`);
+      }
+      const data = await res.json();
+      swimmers = Array.isArray(data && data.swimmers) ? data.swimmers : [];
+    }
 
     if (!swimmers.length) {
       if (timeSwimmerName) {
@@ -390,8 +397,20 @@ async function loadSwimmerOptionsForManualTime() {
 
     const options = swimmers
       .map(
-        (swimmer) =>
-          `<option value="${swimmer.swimmer_id}">${escHtml(swimmer.name)}${swimmer.group_name ? ` (${escHtml(swimmer.group_name)})` : ""}</option>`,
+        (swimmer) => {
+          const swimmerId =
+            swimmer && swimmer.swimmer_id != null
+              ? swimmer.swimmer_id
+              : swimmer && swimmer.id != null
+                ? swimmer.id
+                : "";
+          const swimmerName = swimmer && swimmer.name ? swimmer.name : "Unnamed Swimmer";
+          const groupSuffix =
+            swimmer && swimmer.group_name
+              ? ` (${escHtml(swimmer.group_name)})`
+              : "";
+          return `<option value="${escHtml(swimmerId)}">${escHtml(swimmerName)}${groupSuffix}</option>`;
+        },
       )
       .join("");
 

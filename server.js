@@ -773,12 +773,12 @@ app.post("/api/login", async (req, res) => {
 });
 
 app.post("/api/signup", async (req, res) => {
-  const { name, email, password, role } = req.body;
+  const { name, email, password, role, gender, date_of_birth, address } = req.body;
 
-  if (!name || !email || !password || !role) {
+  if (!name || !email || !password || !role || !gender || !date_of_birth || !address) {
     return res
       .status(400)
-      .json({ message: "name, email, password, and role are required" });
+      .json({ message: "name, email, password, role, gender, date_of_birth, and address are required" });
   }
 
   if (!["swimmer", "parent"].includes(role)) {
@@ -793,9 +793,14 @@ app.post("/api/signup", async (req, res) => {
 
   const cleanName = name.trim();
   const cleanEmail = email.trim().toLowerCase();
+  const cleanGender = String(gender).trim().toLowerCase();
+  const cleanAddress = String(address).trim();
+  const cleanDob = normalizeDateOnly(date_of_birth);
 
-  if (!cleanName || !cleanEmail) {
-    return res.status(400).json({ message: "name and email cannot be blank" });
+  if (!cleanName || !cleanEmail || !cleanGender || !cleanAddress || !cleanDob) {
+    return res.status(400).json({
+      message: "name, email, gender, date_of_birth, and address must be valid and non-blank",
+    });
   }
 
   const connection = await pool.getConnection();
@@ -806,14 +811,14 @@ app.post("/api/signup", async (req, res) => {
     const passwordHash = await bcrypt.hash(password, 10);
 
     const [result] = await connection.query(
-      "INSERT INTO users (name, email, password_hash, role) VALUES (?, ?, ?, ?)",
-      [cleanName, cleanEmail, passwordHash, role],
+      "INSERT INTO users (name, email, password_hash, role, gender, date_of_birth, address) VALUES (?, ?, ?, ?, ?, ?, ?)",
+      [cleanName, cleanEmail, passwordHash, role, cleanGender, cleanDob, cleanAddress],
     );
 
     if (role === "swimmer") {
       await connection.query(
-        "INSERT INTO swimmers (user_id, date_of_birth, gender, skill_level) VALUES (?, NULL, NULL, NULL)",
-        [result.insertId],
+        "INSERT INTO swimmers (user_id, date_of_birth, gender, skill_level) VALUES (?, ?, ?, NULL)",
+        [result.insertId, cleanDob, cleanGender],
       );
 
       const [swimmerRows] = await connection.query(
@@ -908,12 +913,12 @@ app.get("/api/users", authenticate, async (req, res) => {
 });
 
 app.post("/api/users", authenticate, requireRole("admin"), async (req, res) => {
-  const { name, email, password, role } = req.body;
+  const { name, email, password, role, gender, date_of_birth, address } = req.body;
 
-  if (!name || !email || !password || !role) {
+  if (!name || !email || !password || !role || !gender || !date_of_birth || !address) {
     return res
       .status(400)
-      .json({ message: "name, email, password, and role are required" });
+      .json({ message: "name, email, password, role, gender, date_of_birth, and address are required" });
   }
 
   if (!["admin", "coach", "swimmer", "parent"].includes(role)) {
@@ -928,9 +933,14 @@ app.post("/api/users", authenticate, requireRole("admin"), async (req, res) => {
 
   const cleanName = name.trim();
   const cleanEmail = email.trim().toLowerCase();
+  const cleanGender = String(gender).trim().toLowerCase();
+  const cleanAddress = String(address).trim();
+  const cleanDob = normalizeDateOnly(date_of_birth);
 
-  if (!cleanName || !cleanEmail) {
-    return res.status(400).json({ message: "name and email cannot be blank" });
+  if (!cleanName || !cleanEmail || !cleanGender || !cleanAddress || !cleanDob) {
+    return res.status(400).json({
+      message: "name, email, gender, date_of_birth, and address must be valid and non-blank",
+    });
   }
 
   const connection = await pool.getConnection();
@@ -941,14 +951,14 @@ app.post("/api/users", authenticate, requireRole("admin"), async (req, res) => {
     const passwordHash = await bcrypt.hash(password, 10);
 
     const [result] = await connection.query(
-      "INSERT INTO users (name, email, password_hash, role) VALUES (?, ?, ?, ?)",
-      [cleanName, cleanEmail, passwordHash, role],
+      "INSERT INTO users (name, email, password_hash, role, gender, date_of_birth, address) VALUES (?, ?, ?, ?, ?, ?, ?)",
+      [cleanName, cleanEmail, passwordHash, role, cleanGender, cleanDob, cleanAddress],
     );
 
     if (role === "swimmer") {
       await connection.query(
-        "INSERT INTO swimmers (user_id, date_of_birth, gender, skill_level) VALUES (?, NULL, NULL, NULL)",
-        [result.insertId],
+        "INSERT INTO swimmers (user_id, date_of_birth, gender, skill_level) VALUES (?, ?, ?, NULL)",
+        [result.insertId, cleanDob, cleanGender],
       );
     }
 
@@ -1937,6 +1947,34 @@ app.get(
     } catch (error) {
       return res.status(500).json({
         message: "Failed to fetch linked swimmers",
+        error: error.message,
+      });
+    }
+  },
+);
+
+app.get(
+  "/api/swimmers/options",
+  authenticate,
+  requireRole("admin", "coach"),
+  async (_req, res) => {
+    try {
+      const [rows] = await pool.query(
+        `SELECT s.id AS swimmer_id,
+                u.name,
+                u.email,
+                pg.group_name
+         FROM swimmers s
+         JOIN users u ON u.id = s.user_id
+         LEFT JOIN swimmer_groups sg ON sg.swimmer_id = s.id
+         LEFT JOIN practice_groups pg ON pg.id = sg.group_id
+         ORDER BY u.name ASC`,
+      );
+
+      return res.json(rows);
+    } catch (error) {
+      return res.status(500).json({
+        message: "Failed to load swimmer options",
         error: error.message,
       });
     }

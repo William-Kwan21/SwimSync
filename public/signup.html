@@ -37,6 +37,24 @@
             <option value="parent">Parent</option>
           </select>
         </div>
+        <div class="form-row">
+          <label for="signup-gender">Gender</label>
+          <select id="signup-gender" required>
+            <option value="">Select gender</option>
+            <option value="male">Male</option>
+            <option value="female">Female</option>
+            <option value="non-binary">Non-binary</option>
+            <option value="other">Other</option>
+          </select>
+        </div>
+        <div class="form-row">
+          <label for="signup-dob">Date of Birth</label>
+          <input id="signup-dob" type="date" required />
+        </div>
+        <div class="form-row">
+          <label for="signup-address">Address</label>
+          <input id="signup-address" type="text" placeholder="Street, City, State" required />
+        </div>
 
         <div id="signup-error" class="state-msg error hidden"></div>
         <div id="signup-success" class="state-msg hidden"></div>

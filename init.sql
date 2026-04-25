@@ -7,6 +7,9 @@ CREATE TABLE IF NOT EXISTS users (
   email VARCHAR(150) NOT NULL UNIQUE,
   password_hash VARCHAR(255) NULL,
   role ENUM('admin','coach','swimmer','parent') NOT NULL DEFAULT 'swimmer',
+  gender VARCHAR(20) NULL,
+  date_of_birth DATE NULL,
+  address VARCHAR(255) NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 

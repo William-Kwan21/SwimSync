@@ -114,6 +114,27 @@
           </select>
         </div>
 
+        <div class="form-row">
+          <label for="new-user-gender">Gender</label>
+          <select id="new-user-gender" name="gender" required>
+            <option value="">Select gender</option>
+            <option value="male">Male</option>
+            <option value="female">Female</option>
+            <option value="non-binary">Non-binary</option>
+            <option value="other">Other</option>
+          </select>
+        </div>
+
+        <div class="form-row">
+          <label for="new-user-dob">Date of Birth</label>
+          <input id="new-user-dob" name="date_of_birth" type="date" required />
+        </div>
+
+        <div class="form-row form-row-full">
+          <label for="new-user-address">Address</label>
+          <input id="new-user-address" name="address" type="text" required />
+        </div>
+
         <div class="form-row form-row-full">
           <button class="btn btn-primary" id="btn-add-user" type="submit">Add User</button>
         </div>

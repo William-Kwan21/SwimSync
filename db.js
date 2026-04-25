@@ -18,6 +18,9 @@ async function ensureUsersTable(admin) {
       email VARCHAR(150) NOT NULL UNIQUE,
       password_hash VARCHAR(255) NULL,
       role ENUM('admin','coach','swimmer','parent') NOT NULL DEFAULT 'swimmer',
+      gender VARCHAR(20) NULL,
+      date_of_birth DATE NULL,
+      address VARCHAR(255) NULL,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )
   `);
@@ -37,26 +40,61 @@ async function ensureUsersTable(admin) {
       throw error;
     }
   }
+
+  try {
+    await admin.query("ALTER TABLE users ADD COLUMN gender VARCHAR(20) NULL AFTER role");
+  } catch (error) {
+    if (error.code !== "ER_DUP_FIELDNAME") {
+      throw error;
+    }
+  }
+
+  try {
+    await admin.query("ALTER TABLE users ADD COLUMN date_of_birth DATE NULL AFTER gender");
+  } catch (error) {
+    if (error.code !== "ER_DUP_FIELDNAME") {
+      throw error;
+    }
+  }
+
+  try {
+    await admin.query("ALTER TABLE users ADD COLUMN address VARCHAR(255) NULL AFTER date_of_birth");
+  } catch (error) {
+    if (error.code !== "ER_DUP_FIELDNAME") {
+      throw error;
+    }
+  }
 }
 
 async function seedUsers(admin) {
   const demoUsers = [
-    { name: "Alex Admin", email: "admin@swimsync.com", password: "Admin123!", role: "admin" },
-    { name: "Casey Coach", email: "coach@swimsync.com", password: "Coach123!", role: "coach" },
-    { name: "Sam Swimmer", email: "swimmer@swimsync.com", password: "Swimmer123!", role: "swimmer" },
-    { name: "Pat Parent", email: "parent@swimsync.com", password: "Parent123!", role: "parent" }
+    { name: "Alex Admin", email: "admin@swimsync.com", password: "Admin123!", role: "admin", gender: "male", date_of_birth: "1990-02-01", address: "123 Admin Way" },
+    { name: "Casey Coach", email: "coach@swimsync.com", password: "Coach123!", role: "coach", gender: "female", date_of_birth: "1992-05-12", address: "456 Coach Ave" },
+    { name: "Sam Swimmer", email: "swimmer@swimsync.com", password: "Swimmer123!", role: "swimmer", gender: "female", date_of_birth: "2011-06-14", address: "789 Swim Ln" },
+    { name: "Pat Parent", email: "parent@swimsync.com", password: "Parent123!", role: "parent", gender: "male", date_of_birth: "1985-10-20", address: "321 Parent St" }
   ];
 
   for (const user of demoUsers) {
     const passwordHash = await bcrypt.hash(user.password, 10);
     await admin.query(
-      `INSERT INTO users (name, email, password_hash, role)
-       VALUES (?, ?, ?, ?)
+      `INSERT INTO users (name, email, password_hash, role, gender, date_of_birth, address)
+       VALUES (?, ?, ?, ?, ?, ?, ?)
        ON DUPLICATE KEY UPDATE
          name = VALUES(name),
          password_hash = VALUES(password_hash),
-         role = VALUES(role)`,
-      [user.name, user.email, passwordHash, user.role]
+         role = VALUES(role),
+         gender = VALUES(gender),
+         date_of_birth = VALUES(date_of_birth),
+         address = VALUES(address)`,
+      [
+        user.name,
+        user.email,
+        passwordHash,
+        user.role,
+        user.gender,
+        user.date_of_birth,
+        user.address,
+      ]
     );
   }
 }

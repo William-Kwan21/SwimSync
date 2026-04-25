@@ -332,9 +332,20 @@ if (addUserForm) {
       email: String(formData.get("email") || "").trim(),
       password: String(formData.get("password") || ""),
       role: String(formData.get("role") || "").trim(),
+      gender: String(formData.get("gender") || "").trim(),
+      date_of_birth: String(formData.get("date_of_birth") || "").trim(),
+      address: String(formData.get("address") || "").trim(),
     };
 
-    if (!payload.name || !payload.email || !payload.password || !payload.role) {
+    if (
+      !payload.name ||
+      !payload.email ||
+      !payload.password ||
+      !payload.role ||
+      !payload.gender ||
+      !payload.date_of_birth ||
+      !payload.address
+    ) {
       showStatus(addUserStatus, "All fields are required.", "error");
       return;
     }
