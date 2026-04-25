@@ -1,0 +1,218 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>SwimSync &mdash; Meets &amp; Times</title>
+    <link rel="stylesheet" href="style.css" />
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css" />
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/tom-select/dist/css/tom-select.css" />
+  </head>
+  <body>
+    <header>
+      <div class="header-inner">
+        <div class="header-top-row">
+          <div>
+            <h1>&#127946; SwimSync</h1>
+            <p class="subtitle">Meets &amp; Times</p>
+          </div>
+          <button class="btn btn-secondary" id="btn-logout" type="button">Log Out</button>
+        </div>
+        <div class="header-meta-row">
+          <span id="db-status" class="badge loading">Connecting&hellip;</span>
+          <span id="user-role-badge" class="badge role-badge hidden"></span>
+        </div>
+      </div>
+    </header>
+
+    <div class="page-layout">
+      <aside class="site-sidebar-global">
+        <h2 class="sidebar-title">Navigation</h2>
+        <nav class="sidebar-nav">
+          <a href="/app" class="sidebar-link">&#127968; Dashboard</a>
+          <a href="/schedule" class="sidebar-link">&#128197; Schedule</a>
+          <a href="/team" class="sidebar-link">&#128101; Team</a>
+          <a href="/meets" class="sidebar-link active">&#127939; Meets &amp; Times</a>
+        </nav>
+      </aside>
+
+      <main class="page-main">
+        <section class="card split-grid hidden" id="admin-import-card">
+          <div>
+            <div class="card-header">
+              <h2>Import Meet File</h2>
+            </div>
+            <form id="meet-import-form" class="form-grid" autocomplete="off">
+              <div class="form-row form-row-full">
+                <label for="meet-import-file">Meet file (JSON or CSV)</label>
+                <input id="meet-import-file" type="file" accept=".json,.csv,.txt" required />
+              </div>
+              <div id="meet-import-status" class="state-msg hidden form-row-full"></div>
+              <div class="form-row form-row-full">
+                <button class="btn btn-primary" id="btn-import-meet" type="submit">Import Meet</button>
+              </div>
+            </form>
+          </div>
+
+          <div>
+            <div class="card-header">
+              <h2>Import Swimmer Times</h2>
+            </div>
+            <form id="times-import-form" class="form-grid" autocomplete="off">
+              <div class="form-row form-row-full">
+                <label for="times-import-file">Times file (JSON or CSV)</label>
+                <input id="times-import-file" type="file" accept=".json,.csv,.txt" required />
+              </div>
+              <div id="times-import-status" class="state-msg hidden form-row-full"></div>
+              <div class="form-row form-row-full">
+                <button class="btn btn-primary" id="btn-import-times" type="submit">Import Times</button>
+              </div>
+            </form>
+          </div>
+        </section>
+
+        <section class="card hidden" id="manual-time-card">
+          <div class="card-header">
+            <h2>Add / Update Swimmer Best Time</h2>
+          </div>
+          <form id="manual-time-form" class="form-grid" autocomplete="off">
+            <div class="form-row">
+              <label for="time-swimmer-id">Swimmer ID</label>
+              <input id="time-swimmer-id" type="number" min="1" required />
+            </div>
+            <div class="form-row">
+              <label for="time-stroke">Stroke</label>
+              <input id="time-stroke" type="text" placeholder="Freestyle" required />
+            </div>
+            <div class="form-row">
+              <label for="time-distance">Distance (m)</label>
+              <input id="time-distance" type="number" min="1" placeholder="50" required />
+            </div>
+            <div class="form-row">
+              <label for="time-best">Best Time</label>
+              <input id="time-best" type="text" placeholder="00:32.50" required />
+            </div>
+            <div class="form-row">
+              <label for="time-achieved-on">Achieved On</label>
+              <input id="time-achieved-on" type="date" />
+            </div>
+            <div class="form-row form-row-full">
+              <button class="btn btn-primary" id="btn-save-time" type="submit">Save Best Time</button>
+            </div>
+            <div id="manual-time-status" class="state-msg hidden form-row-full"></div>
+          </form>
+        </section>
+
+        <section class="card">
+          <div class="card-header">
+            <h2>Meets</h2>
+            <button class="btn btn-secondary" id="btn-refresh-meets" type="button">&#8635; Refresh</button>
+          </div>
+          <div id="meets-loading" class="state-msg">Loading meets&hellip;</div>
+          <div id="meets-error" class="state-msg error hidden"></div>
+          <div id="meets-empty" class="state-msg hidden">No meets available for your account.</div>
+          <div class="table-wrap">
+            <table id="meets-table" class="hidden">
+              <thead>
+                <tr>
+                  <th>Meet</th>
+                  <th>Date</th>
+                  <th>Location</th>
+                  <th>Events</th>
+                  <th>Selected</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
+              <tbody id="meets-tbody"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="card hidden" id="meet-detail-card">
+          <div class="card-header">
+            <h2 id="meet-detail-title">Meet Details</h2>
+            <span id="meet-detail-meta" class="muted-inline"></span>
+          </div>
+
+          <div id="meet-days" class="chip-list"></div>
+
+          <div id="coach-event-controls" class="hidden">
+            <div class="card-header">
+              <h2>Coach Event Selection</h2>
+            </div>
+            <div id="coach-selection-status" class="state-msg hidden"></div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Select</th>
+                    <th>Event</th>
+                    <th>Stroke</th>
+                    <th>Distance</th>
+                    <th>Gender</th>
+                    <th>Standard</th>
+                  </tr>
+                </thead>
+                <tbody id="events-tbody"></tbody>
+              </table>
+            </div>
+            <div class="form-row form-row-full" style="margin-top: 0.8rem;">
+              <button class="btn btn-primary" id="btn-save-event-selection" type="button">Save Selected Events</button>
+            </div>
+          </div>
+
+          <div id="declare-controls" class="hidden">
+            <div class="card-header">
+              <h2>Declare Meet Days</h2>
+            </div>
+            <div id="declare-status" class="state-msg hidden"></div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Swimmer</th>
+                    <th>Meet Day</th>
+                    <th>Declaration</th>
+                    <th>Note</th>
+                  </tr>
+                </thead>
+                <tbody id="declare-tbody"></tbody>
+              </table>
+            </div>
+            <div class="form-row form-row-full" style="margin-top: 0.8rem;">
+              <button class="btn btn-primary" id="btn-save-declarations" type="button">Save Declarations</button>
+            </div>
+          </div>
+        </section>
+
+        <section class="card">
+          <div class="card-header">
+            <h2>Swimmer Best Times</h2>
+          </div>
+          <div id="times-loading" class="state-msg">Loading times&hellip;</div>
+          <div id="times-error" class="state-msg error hidden"></div>
+          <div id="times-empty" class="state-msg hidden">No swimmer times recorded yet.</div>
+          <div class="table-wrap">
+            <table id="times-table" class="hidden">
+              <thead>
+                <tr>
+                  <th>Swimmer</th>
+                  <th>Stroke</th>
+                  <th>Distance</th>
+                  <th>Best</th>
+                  <th>Date</th>
+                </tr>
+              </thead>
+              <tbody id="times-tbody"></tbody>
+            </table>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+    <script src="https://cdn.jsdelivr.net/npm/tom-select/dist/js/tom-select.complete.min.js"></script>
+    <script src="ui-theme.js"></script>
+    <script src="meets.js"></script>
+  </body>
+</html>

@@ -155,7 +155,401 @@ async function getAccessibleSwimmerIdsForUser(user) {
   return [];
 }
 
-app.use(express.json());
+function normalizeStroke(stroke) {
+  return String(stroke || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, " ");
+}
+
+function normalizeGender(gender) {
+  const raw = String(gender || "").trim().toLowerCase();
+  if (!raw) return "";
+  if (["m", "male", "boys", "boy", "men", "man"].includes(raw)) {
+    return "male";
+  }
+  if (["f", "female", "girls", "girl", "women", "woman"].includes(raw)) {
+    return "female";
+  }
+  if (["mixed", "open", "coed", "co-ed", "all"].includes(raw)) {
+    return "mixed";
+  }
+  return raw;
+}
+
+function genderMatches(eventGender, swimmerGender) {
+  const e = normalizeGender(eventGender);
+  const s = normalizeGender(swimmerGender);
+  if (!e || e === "mixed") return true;
+  if (!s) return true;
+  return e === s;
+}
+
+function parseTimeToSeconds(value) {
+  if (value == null) return null;
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return Number(value.toFixed(2));
+  }
+
+  const raw = String(value).trim();
+  if (!raw) return null;
+
+  if (/^\d+(\.\d+)?$/.test(raw)) {
+    const parsed = Number(raw);
+    return Number.isFinite(parsed) ? Number(parsed.toFixed(2)) : null;
+  }
+
+  if (/^\d{1,2}:\d{1,2}(\.\d+)?$/.test(raw)) {
+    const [minutesPart, secondsPart] = raw.split(":");
+    const minutes = Number(minutesPart);
+    const seconds = Number(secondsPart);
+    if (!Number.isFinite(minutes) || !Number.isFinite(seconds)) {
+      return null;
+    }
+    return Number((minutes * 60 + seconds).toFixed(2));
+  }
+
+  if (/^\d+:\d{1,2}:\d{1,2}(\.\d+)?$/.test(raw)) {
+    const [hoursPart, minutesPart, secondsPart] = raw.split(":");
+    const hours = Number(hoursPart);
+    const minutes = Number(minutesPart);
+    const seconds = Number(secondsPart);
+    if (
+      !Number.isFinite(hours) ||
+      !Number.isFinite(minutes) ||
+      !Number.isFinite(seconds)
+    ) {
+      return null;
+    }
+    return Number((hours * 3600 + minutes * 60 + seconds).toFixed(2));
+  }
+
+  return null;
+}
+
+function formatSeconds(seconds) {
+  const value = Number(seconds);
+  if (!Number.isFinite(value) || value < 0) return null;
+
+  const mins = Math.floor(value / 60);
+  const secs = (value - mins * 60).toFixed(2).padStart(5, "0");
+  return `${mins}:${secs}`;
+}
+
+function parseCsvLine(line) {
+  const cells = [];
+  let current = "";
+  let inQuotes = false;
+
+  for (let i = 0; i < line.length; i += 1) {
+    const ch = line[i];
+    if (ch === '"') {
+      if (inQuotes && line[i + 1] === '"') {
+        current += '"';
+        i += 1;
+      } else {
+        inQuotes = !inQuotes;
+      }
+    } else if (ch === "," && !inQuotes) {
+      cells.push(current.trim());
+      current = "";
+    } else {
+      current += ch;
+    }
+  }
+
+  cells.push(current.trim());
+  return cells;
+}
+
+function parseCsvToObjects(content) {
+  const lines = String(content || "")
+    .replace(/\r\n/g, "\n")
+    .replace(/\r/g, "\n")
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  if (lines.length < 2) {
+    return [];
+  }
+
+  const headers = parseCsvLine(lines[0]).map((h) => h.toLowerCase().trim());
+  const rows = [];
+
+  for (let i = 1; i < lines.length; i += 1) {
+    const values = parseCsvLine(lines[i]);
+    const row = {};
+    headers.forEach((header, index) => {
+      row[header] = values[index] != null ? values[index] : "";
+    });
+    rows.push(row);
+  }
+
+  return rows;
+}
+
+function firstNonEmpty(obj, keys, fallback = "") {
+  for (const key of keys) {
+    const value = obj && obj[key];
+    if (value != null && String(value).trim() !== "") {
+      return String(value).trim();
+    }
+  }
+  return fallback;
+}
+
+function normalizeDateOnly(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return null;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw;
+  const parsed = new Date(raw);
+  if (Number.isNaN(parsed.getTime())) return null;
+  const year = parsed.getFullYear();
+  const month = String(parsed.getMonth() + 1).padStart(2, "0");
+  const day = String(parsed.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function parseTruthy(value) {
+  const raw = String(value || "")
+    .trim()
+    .toLowerCase();
+  return ["1", "true", "yes", "y", "selected"].includes(raw);
+}
+
+function parseMeetFileContent(content) {
+  const text = String(content || "").trim();
+  if (!text) {
+    throw new Error("Meet file content is empty");
+  }
+
+  let payloadRows = [];
+  let meta = null;
+
+  if (text.startsWith("{") || text.startsWith("[")) {
+    const parsed = JSON.parse(text);
+    if (Array.isArray(parsed)) {
+      payloadRows = parsed;
+    } else {
+      meta = parsed;
+      payloadRows = Array.isArray(parsed.rows)
+        ? parsed.rows
+        : Array.isArray(parsed.events)
+          ? parsed.events
+          : [];
+    }
+  } else {
+    payloadRows = parseCsvToObjects(text);
+  }
+
+  if (!Array.isArray(payloadRows) || payloadRows.length === 0) {
+    throw new Error(
+      "No meet rows found. Provide JSON with events/rows or a CSV with at least one data row.",
+    );
+  }
+
+  const first = payloadRows[0];
+  const meetName =
+    (meta && firstNonEmpty(meta, ["meet_name", "meetName", "title"])) ||
+    firstNonEmpty(first, ["meet_name", "meet", "meetname", "title"], "Imported Meet");
+
+  const meetDate =
+    normalizeDateOnly(
+      (meta && firstNonEmpty(meta, ["meet_date", "meetDate", "date"])) ||
+        firstNonEmpty(first, ["meet_date", "date", "meet_day", "day"]),
+    ) || normalizeDateOnly(new Date().toISOString().slice(0, 10));
+
+  const location =
+    (meta && firstNonEmpty(meta, ["location"])) ||
+    firstNonEmpty(first, ["location", "pool", "venue"], "");
+
+  const hostTeam =
+    (meta && firstNonEmpty(meta, ["host_team", "hostTeam", "host"])) ||
+    firstNonEmpty(first, ["host_team", "host"], "");
+
+  const daySet = new Set();
+  const events = [];
+
+  const metaDays = meta && Array.isArray(meta.days) ? meta.days : [];
+  metaDays.forEach((day) => {
+    const normalized = normalizeDateOnly(day);
+    if (normalized) daySet.add(normalized);
+  });
+
+  payloadRows.forEach((row, index) => {
+    const meetDay = normalizeDateOnly(
+      firstNonEmpty(row, ["meet_day", "day", "day_date", "date"]),
+    );
+    if (meetDay) {
+      daySet.add(meetDay);
+    }
+
+    const eventName = firstNonEmpty(row, ["event_name", "event", "name"], "");
+    if (!eventName) {
+      return;
+    }
+
+    const stroke = firstNonEmpty(row, ["stroke"], "");
+    const distanceRaw = firstNonEmpty(row, ["distance_meters", "distance", "meters"], "");
+    const distanceMeters = distanceRaw ? Number(distanceRaw) : null;
+    const ageGroup = firstNonEmpty(row, ["age_group", "age"], "");
+    const gender = firstNonEmpty(row, ["gender", "sex"], "");
+    const qualifyingRaw = firstNonEmpty(row, ["qualifying_time", "time_standard", "cut_time", "standard"], "");
+    const qualifyingSeconds = parseTimeToSeconds(qualifyingRaw);
+    const selectedRaw = firstNonEmpty(row, ["is_selected", "selected"], "");
+
+    events.push({
+      event_name: eventName,
+      stroke: stroke || null,
+      distance_meters: Number.isFinite(distanceMeters) ? distanceMeters : null,
+      age_group: ageGroup || null,
+      gender: gender || null,
+      qualifying_time_seconds: qualifyingSeconds,
+      qualifying_time_text: qualifyingSeconds != null ? formatSeconds(qualifyingSeconds) : null,
+      is_selected: selectedRaw ? parseTruthy(selectedRaw) : index < 4,
+    });
+  });
+
+  if (!events.length) {
+    throw new Error("No valid events were found in the meet file");
+  }
+
+  if (!daySet.size) {
+    daySet.add(meetDate);
+  }
+
+  return {
+    meet_name: meetName,
+    meet_date: meetDate,
+    location: location || null,
+    host_team: hostTeam || null,
+    days: Array.from(daySet).sort(),
+    events,
+  };
+}
+
+async function getCoachIdForUser(userId) {
+  const [rows] = await pool.query(
+    "SELECT id FROM coaches WHERE user_id = ? LIMIT 1",
+    [userId],
+  );
+  return rows.length ? rows[0].id : null;
+}
+
+async function getSwimmerRowsByIds(swimmerIds) {
+  if (!Array.isArray(swimmerIds) || swimmerIds.length === 0) {
+    return [];
+  }
+
+  const [rows] = await pool.query(
+    `SELECT s.id AS swimmer_id, u.name AS swimmer_name, s.gender
+     FROM swimmers s
+     JOIN users u ON u.id = s.user_id
+     WHERE s.id IN (${swimmerIds.map(() => "?").join(",")})
+     ORDER BY u.name ASC`,
+    swimmerIds,
+  );
+
+  return rows;
+}
+
+async function getMeetEligibilityForSwimmers(meetId, swimmerIds) {
+  const eventRows = await (async () => {
+    const [rows] = await pool.query(
+      `SELECT id, event_name, stroke, distance_meters, gender,
+              is_selected, qualifying_time_seconds
+       FROM meet_events
+       WHERE meet_id = ?
+       ORDER BY id ASC`,
+      [meetId],
+    );
+    return rows;
+  })();
+
+  const selectedEvents = eventRows.filter((event) => Number(event.is_selected) === 1);
+
+  const eligibilityBySwimmerId = new Map();
+
+  if (!Array.isArray(swimmerIds) || swimmerIds.length === 0 || !selectedEvents.length) {
+    return {
+      selectedEvents,
+      eligibilityBySwimmerId,
+      visibleSwimmerIds: [],
+    };
+  }
+
+  const swimmers = await getSwimmerRowsByIds(swimmerIds);
+  const [timeRows] = await pool.query(
+    `SELECT swimmer_id, stroke, distance_meters, best_time_seconds
+     FROM swimmer_best_times
+     WHERE swimmer_id IN (${swimmerIds.map(() => "?").join(",")})`,
+    swimmerIds,
+  );
+
+  const timesBySwimmer = new Map();
+  timeRows.forEach((row) => {
+    const swimmerId = Number(row.swimmer_id);
+    if (!timesBySwimmer.has(swimmerId)) {
+      timesBySwimmer.set(swimmerId, new Map());
+    }
+    const key = `${normalizeStroke(row.stroke)}|${Number(row.distance_meters) || 0}`;
+    timesBySwimmer.get(swimmerId).set(key, Number(row.best_time_seconds));
+  });
+
+  swimmers.forEach((swimmer) => {
+    const swimmerId = Number(swimmer.swimmer_id);
+    const swimmerTimes = timesBySwimmer.get(swimmerId) || new Map();
+    const eligibleEventIds = [];
+
+    selectedEvents.forEach((event) => {
+      if (!genderMatches(event.gender, swimmer.gender)) {
+        return;
+      }
+
+      const hasStandard =
+        event.qualifying_time_seconds != null &&
+        Number.isFinite(Number(event.qualifying_time_seconds));
+
+      if (!hasStandard) {
+        eligibleEventIds.push(Number(event.id));
+        return;
+      }
+
+      const distance = Number(event.distance_meters);
+      const stroke = normalizeStroke(event.stroke);
+      if (!distance || !stroke) {
+        return;
+      }
+
+      const key = `${stroke}|${distance}`;
+      const best = swimmerTimes.get(key);
+      const standard = Number(event.qualifying_time_seconds);
+      if (Number.isFinite(best) && best <= standard) {
+        eligibleEventIds.push(Number(event.id));
+      }
+    });
+
+    eligibilityBySwimmerId.set(swimmerId, {
+      swimmer_id: swimmerId,
+      swimmer_name: swimmer.swimmer_name,
+      eligible_event_ids: eligibleEventIds,
+      is_visible: eligibleEventIds.length > 0,
+    });
+  });
+
+  const visibleSwimmerIds = Array.from(eligibilityBySwimmerId.values())
+    .filter((entry) => entry.is_visible)
+    .map((entry) => entry.swimmer_id);
+
+  return {
+    selectedEvents,
+    eligibilityBySwimmerId,
+    visibleSwimmerIds,
+  };
+}
+
+app.use(express.json({ limit: "2mb" }));
 app.use(express.static(path.join(__dirname, "public"), { index: false }));
 
 app.get("/", (_req, res) => {
@@ -480,6 +874,10 @@ app.get("/schedule", (_req, res) => {
 
 app.get("/team", (_req, res) => {
   res.sendFile(path.join(__dirname, "public", "team.html"));
+});
+
+app.get("/meets", (_req, res) => {
+  res.sendFile(path.join(__dirname, "public", "meets.html"));
 });
 
 /* ── practice groups ── */
@@ -1370,6 +1768,638 @@ app.get(
         message: "Failed to fetch linked swimmers",
         error: error.message,
       });
+    }
+  },
+);
+
+app.post(
+  "/api/meets/import",
+  authenticate,
+  requireRole("admin"),
+  async (req, res) => {
+    const content = String(req.body && req.body.content ? req.body.content : "");
+
+    if (!content.trim()) {
+      return res.status(400).json({ message: "content is required" });
+    }
+
+    let parsedMeet;
+    try {
+      parsedMeet = parseMeetFileContent(content);
+    } catch (error) {
+      return res
+        .status(400)
+        .json({ message: `Invalid meet file: ${error.message}` });
+    }
+
+    const connection = await pool.getConnection();
+
+    try {
+      await connection.beginTransaction();
+
+      const coachId = await getCoachIdForUser(req.user.sub);
+
+      const [meetResult] = await connection.query(
+        `INSERT INTO meets (meet_name, meet_date, location, host_team, created_by_coach_id)
+         VALUES (?, ?, ?, ?, ?)`,
+        [
+          parsedMeet.meet_name,
+          parsedMeet.meet_date,
+          parsedMeet.location,
+          parsedMeet.host_team,
+          coachId,
+        ],
+      );
+
+      const meetId = meetResult.insertId;
+
+      if (parsedMeet.days.length) {
+        const dayValues = parsedMeet.days.map(() => "(?, ?)").join(", ");
+        const dayParams = parsedMeet.days.flatMap((day) => [meetId, day]);
+
+        await connection.query(
+          `INSERT INTO meet_days (meet_id, meet_day) VALUES ${dayValues}`,
+          dayParams,
+        );
+      }
+
+      if (parsedMeet.events.length) {
+        const eventValues = parsedMeet.events
+          .map(() => "(?, ?, ?, ?, ?, ?, ?, ?, ?)")
+          .join(", ");
+
+        const eventParams = parsedMeet.events.flatMap((event) => [
+          meetId,
+          event.event_name,
+          event.stroke,
+          event.distance_meters,
+          event.age_group,
+          event.gender,
+          event.is_selected ? 1 : 0,
+          event.qualifying_time_seconds,
+          event.qualifying_time_text,
+        ]);
+
+        await connection.query(
+          `INSERT INTO meet_events
+             (meet_id, event_name, stroke, distance_meters, age_group, gender, is_selected, qualifying_time_seconds, qualifying_time_text)
+           VALUES ${eventValues}`,
+          eventParams,
+        );
+      }
+
+      await connection.commit();
+
+      return res.status(201).json({
+        message: "Meet imported",
+        meet: {
+          id: meetId,
+          meet_name: parsedMeet.meet_name,
+          meet_date: parsedMeet.meet_date,
+          days: parsedMeet.days,
+          event_count: parsedMeet.events.length,
+        },
+      });
+    } catch (error) {
+      await connection.rollback();
+      return res
+        .status(500)
+        .json({ message: "Failed to import meet", error: error.message });
+    } finally {
+      connection.release();
+    }
+  },
+);
+
+app.get("/api/meets", authenticate, async (req, res) => {
+  try {
+    const [meetRows] = await pool.query(
+      `SELECT m.id, m.meet_name, m.meet_date, m.location, m.host_team,
+              COUNT(DISTINCT md.id) AS day_count,
+              COUNT(DISTINCT me.id) AS event_count,
+              SUM(CASE WHEN me.is_selected = 1 THEN 1 ELSE 0 END) AS selected_event_count
+       FROM meets m
+       LEFT JOIN meet_days md ON md.meet_id = m.id
+       LEFT JOIN meet_events me ON me.meet_id = m.id
+       GROUP BY m.id, m.meet_name, m.meet_date, m.location, m.host_team
+       ORDER BY m.meet_date DESC, m.id DESC`,
+    );
+
+    if (req.user.role === "admin" || req.user.role === "coach") {
+      return res.json(meetRows);
+    }
+
+    const swimmerIds = await getAccessibleSwimmerIdsForUser(req.user);
+    if (!Array.isArray(swimmerIds) || swimmerIds.length === 0) {
+      return res.json([]);
+    }
+
+    const visibleMeets = [];
+    for (const meet of meetRows) {
+      const eligibility = await getMeetEligibilityForSwimmers(meet.id, swimmerIds);
+      if (eligibility.visibleSwimmerIds.length > 0) {
+        visibleMeets.push({
+          ...meet,
+          qualified_swimmer_count: eligibility.visibleSwimmerIds.length,
+        });
+      }
+    }
+
+    return res.json(visibleMeets);
+  } catch (error) {
+    return res
+      .status(500)
+      .json({ message: "Failed to fetch meets", error: error.message });
+  }
+});
+
+app.get("/api/meets/:id", authenticate, async (req, res) => {
+  const meetId = Number(req.params.id);
+  if (Number.isNaN(meetId)) {
+    return res.status(400).json({ message: "Invalid meet id" });
+  }
+
+  try {
+    const [meetRows] = await pool.query(
+      `SELECT id, meet_name, meet_date, location, host_team, created_at
+       FROM meets
+       WHERE id = ?
+       LIMIT 1`,
+      [meetId],
+    );
+
+    if (!meetRows.length) {
+      return res.status(404).json({ message: "Meet not found" });
+    }
+
+    const [days] = await pool.query(
+      "SELECT meet_day FROM meet_days WHERE meet_id = ? ORDER BY meet_day ASC",
+      [meetId],
+    );
+    const [events] = await pool.query(
+      `SELECT id, event_name, stroke, distance_meters, age_group, gender,
+              is_selected, qualifying_time_seconds, qualifying_time_text
+       FROM meet_events
+       WHERE meet_id = ?
+       ORDER BY id ASC`,
+      [meetId],
+    );
+
+    let swimmerIds = [];
+    if (req.user.role === "admin" || req.user.role === "coach") {
+      const [swimmerRows] = await pool.query("SELECT id FROM swimmers ORDER BY id ASC");
+      swimmerIds = swimmerRows.map((row) => Number(row.id));
+    } else {
+      swimmerIds = await getAccessibleSwimmerIdsForUser(req.user);
+    }
+
+    const eligibility = await getMeetEligibilityForSwimmers(meetId, swimmerIds);
+
+    if (
+      (req.user.role === "swimmer" || req.user.role === "parent") &&
+      eligibility.visibleSwimmerIds.length === 0
+    ) {
+      return res.status(404).json({ message: "Meet not found" });
+    }
+
+    const visibleSwimmerIds =
+      req.user.role === "admin" || req.user.role === "coach"
+        ? swimmerIds
+        : eligibility.visibleSwimmerIds;
+
+    const swimmerRows = await getSwimmerRowsByIds(visibleSwimmerIds);
+
+    let declarations = [];
+    if (visibleSwimmerIds.length > 0) {
+      const [rows] = await pool.query(
+        `SELECT md.meet_day, d.swimmer_id, d.status, d.note, u.name AS swimmer_name
+         FROM meet_declarations d
+         JOIN meet_days md ON md.meet_id = d.meet_id AND md.meet_day = d.meet_day
+         JOIN swimmers s ON s.id = d.swimmer_id
+         JOIN users u ON u.id = s.user_id
+         WHERE d.meet_id = ?
+           AND d.swimmer_id IN (${visibleSwimmerIds.map(() => "?").join(",")})
+         ORDER BY md.meet_day ASC, u.name ASC`,
+        [meetId, ...visibleSwimmerIds],
+      );
+      declarations = rows;
+    }
+
+    return res.json({
+      meet: meetRows[0],
+      days,
+      events,
+      swimmers: swimmerRows,
+      eligibility: Array.from(eligibility.eligibilityBySwimmerId.values()),
+      declarations,
+      can_select_events: req.user.role === "admin" || req.user.role === "coach",
+      can_declare: req.user.role === "swimmer" || req.user.role === "parent",
+    });
+  } catch (error) {
+    return res
+      .status(500)
+      .json({ message: "Failed to fetch meet", error: error.message });
+  }
+});
+
+app.put(
+  "/api/meets/:id/events/selection",
+  authenticate,
+  requireRole("admin", "coach"),
+  async (req, res) => {
+    const meetId = Number(req.params.id);
+    const eventIdsInput = Array.isArray(req.body.event_ids) ? req.body.event_ids : [];
+    const eventIds = [
+      ...new Set(
+        eventIdsInput
+          .map((id) => Number(id))
+          .filter((id) => Number.isInteger(id) && id > 0),
+      ),
+    ];
+
+    if (Number.isNaN(meetId)) {
+      return res.status(400).json({ message: "Invalid meet id" });
+    }
+
+    const connection = await pool.getConnection();
+
+    try {
+      const [eventRows] = await connection.query(
+        "SELECT id FROM meet_events WHERE meet_id = ?",
+        [meetId],
+      );
+      const eventIdSet = new Set(eventRows.map((row) => Number(row.id)));
+
+      if (!eventRows.length) {
+        return res.status(404).json({ message: "No events found for meet" });
+      }
+
+      const invalid = eventIds.find((id) => !eventIdSet.has(id));
+      if (invalid) {
+        return res
+          .status(400)
+          .json({ message: `Event ${invalid} does not belong to this meet` });
+      }
+
+      await connection.beginTransaction();
+
+      await connection.query("UPDATE meet_events SET is_selected = 0 WHERE meet_id = ?", [
+        meetId,
+      ]);
+
+      if (eventIds.length) {
+        await connection.query(
+          `UPDATE meet_events
+           SET is_selected = 1
+           WHERE meet_id = ?
+             AND id IN (${eventIds.map(() => "?").join(",")})`,
+          [meetId, ...eventIds],
+        );
+      }
+
+      await connection.commit();
+
+      return res.json({
+        message: "Selected events updated",
+        selected_event_ids: eventIds,
+      });
+    } catch (error) {
+      await connection.rollback();
+      return res.status(500).json({
+        message: "Failed to update selected events",
+        error: error.message,
+      });
+    } finally {
+      connection.release();
+    }
+  },
+);
+
+app.put(
+  "/api/meets/:id/declarations",
+  authenticate,
+  requireRole("swimmer", "parent"),
+  async (req, res) => {
+    const meetId = Number(req.params.id);
+    const declarations = Array.isArray(req.body.declarations)
+      ? req.body.declarations
+      : [];
+
+    if (Number.isNaN(meetId)) {
+      return res.status(400).json({ message: "Invalid meet id" });
+    }
+
+    if (!declarations.length) {
+      return res.status(400).json({ message: "declarations are required" });
+    }
+
+    try {
+      const accessibleSwimmerIds = await getAccessibleSwimmerIdsForUser(req.user);
+      if (!Array.isArray(accessibleSwimmerIds) || accessibleSwimmerIds.length === 0) {
+        return res.status(403).json({ message: "No swimmers available for declarations" });
+      }
+
+      const eligibility = await getMeetEligibilityForSwimmers(
+        meetId,
+        accessibleSwimmerIds,
+      );
+
+      if (!eligibility.visibleSwimmerIds.length) {
+        return res.status(403).json({ message: "No qualified swimmers for this meet" });
+      }
+
+      const [meetDayRows] = await pool.query(
+        "SELECT meet_day FROM meet_days WHERE meet_id = ?",
+        [meetId],
+      );
+      const meetDaySet = new Set(meetDayRows.map((row) => String(row.meet_day).slice(0, 10)));
+
+      const connection = await pool.getConnection();
+      try {
+        await connection.beginTransaction();
+
+        const validStatuses = new Set(["yes", "no", "maybe"]);
+
+        for (const entry of declarations) {
+          const requestedSwimmerId = Number(entry.swimmer_id);
+          let swimmerId = requestedSwimmerId;
+
+          if (req.user.role === "swimmer") {
+            swimmerId = accessibleSwimmerIds[0];
+          }
+
+          if (
+            !Number.isInteger(swimmerId) ||
+            !eligibility.visibleSwimmerIds.includes(swimmerId)
+          ) {
+            await connection.rollback();
+            return res.status(400).json({
+              message: `Swimmer is not eligible for declarations: ${entry.swimmer_id}`,
+            });
+          }
+
+          const meetDay = normalizeDateOnly(entry.meet_day);
+          if (!meetDay || !meetDaySet.has(meetDay)) {
+            await connection.rollback();
+            return res.status(400).json({
+              message: `Invalid meet day: ${entry.meet_day}`,
+            });
+          }
+
+          const status = String(entry.status || "").trim().toLowerCase();
+          if (!validStatuses.has(status)) {
+            await connection.rollback();
+            return res
+              .status(400)
+              .json({ message: `Invalid status: ${entry.status}` });
+          }
+
+          const note =
+            typeof entry.note === "string" ? entry.note.trim() : null;
+
+          await connection.query(
+            `INSERT INTO meet_declarations
+               (meet_id, swimmer_id, meet_day, status, note, declared_by_user_id)
+             VALUES (?, ?, ?, ?, ?, ?)
+             ON DUPLICATE KEY UPDATE
+               status = VALUES(status),
+               note = VALUES(note),
+               declared_by_user_id = VALUES(declared_by_user_id),
+               updated_at = CURRENT_TIMESTAMP`,
+            [meetId, swimmerId, meetDay, status, note || null, req.user.sub],
+          );
+        }
+
+        await connection.commit();
+        return res.json({ message: "Declarations saved" });
+      } finally {
+        connection.release();
+      }
+    } catch (error) {
+      return res.status(500).json({
+        message: "Failed to save declarations",
+        error: error.message,
+      });
+    }
+  },
+);
+
+app.get("/api/swimmer-times", authenticate, async (req, res) => {
+  try {
+    const accessibleSwimmerIds = await getAccessibleSwimmerIdsForUser(req.user);
+
+    let rows;
+    if (Array.isArray(accessibleSwimmerIds)) {
+      if (!accessibleSwimmerIds.length) {
+        return res.json([]);
+      }
+
+      const [result] = await pool.query(
+        `SELECT sbt.id, sbt.swimmer_id, u.name AS swimmer_name,
+                sbt.stroke, sbt.distance_meters, sbt.course,
+                sbt.best_time_seconds, sbt.best_time_text, sbt.achieved_on
+         FROM swimmer_best_times sbt
+         JOIN swimmers s ON s.id = sbt.swimmer_id
+         JOIN users u ON u.id = s.user_id
+         WHERE sbt.swimmer_id IN (${accessibleSwimmerIds.map(() => "?").join(",")})
+         ORDER BY u.name ASC, sbt.distance_meters ASC, sbt.stroke ASC`,
+        accessibleSwimmerIds,
+      );
+      rows = result;
+    } else {
+      const [result] = await pool.query(
+        `SELECT sbt.id, sbt.swimmer_id, u.name AS swimmer_name,
+                sbt.stroke, sbt.distance_meters, sbt.course,
+                sbt.best_time_seconds, sbt.best_time_text, sbt.achieved_on
+         FROM swimmer_best_times sbt
+         JOIN swimmers s ON s.id = sbt.swimmer_id
+         JOIN users u ON u.id = s.user_id
+         ORDER BY u.name ASC, sbt.distance_meters ASC, sbt.stroke ASC`,
+      );
+      rows = result;
+    }
+
+    return res.json(rows);
+  } catch (error) {
+    return res.status(500).json({
+      message: "Failed to fetch swimmer times",
+      error: error.message,
+    });
+  }
+});
+
+app.post(
+  "/api/swimmer-times",
+  authenticate,
+  requireRole("admin", "coach"),
+  async (req, res) => {
+    const swimmerId = Number(req.body.swimmer_id);
+    const stroke = normalizeStroke(req.body.stroke);
+    const distanceMeters = Number(req.body.distance_meters);
+    const course = req.body.course ? String(req.body.course).trim() : null;
+    const bestTimeSeconds = parseTimeToSeconds(req.body.best_time);
+    const achievedOn = normalizeDateOnly(req.body.achieved_on);
+
+    if (!Number.isInteger(swimmerId) || swimmerId <= 0) {
+      return res.status(400).json({ message: "Valid swimmer_id is required" });
+    }
+    if (!stroke) {
+      return res.status(400).json({ message: "stroke is required" });
+    }
+    if (!Number.isInteger(distanceMeters) || distanceMeters <= 0) {
+      return res.status(400).json({ message: "Valid distance_meters is required" });
+    }
+    if (bestTimeSeconds == null) {
+      return res.status(400).json({
+        message: "best_time is required (seconds or mm:ss.xx)",
+      });
+    }
+
+    try {
+      const [swimmerRows] = await pool.query(
+        "SELECT id FROM swimmers WHERE id = ? LIMIT 1",
+        [swimmerId],
+      );
+      if (!swimmerRows.length) {
+        return res.status(404).json({ message: "Swimmer not found" });
+      }
+
+      await pool.query(
+        `INSERT INTO swimmer_best_times
+           (swimmer_id, stroke, distance_meters, course, best_time_seconds, best_time_text, achieved_on)
+         VALUES (?, ?, ?, ?, ?, ?, ?)
+         ON DUPLICATE KEY UPDATE
+           best_time_seconds = LEAST(best_time_seconds, VALUES(best_time_seconds)),
+           best_time_text = IF(VALUES(best_time_seconds) <= best_time_seconds, VALUES(best_time_text), best_time_text),
+           achieved_on = IF(VALUES(best_time_seconds) <= best_time_seconds, VALUES(achieved_on), achieved_on),
+           updated_at = CURRENT_TIMESTAMP`,
+        [
+          swimmerId,
+          stroke,
+          distanceMeters,
+          course,
+          bestTimeSeconds,
+          formatSeconds(bestTimeSeconds),
+          achievedOn,
+        ],
+      );
+
+      return res.status(201).json({ message: "Swimmer best time saved" });
+    } catch (error) {
+      return res.status(500).json({
+        message: "Failed to save swimmer time",
+        error: error.message,
+      });
+    }
+  },
+);
+
+app.post(
+  "/api/swimmer-times/import",
+  authenticate,
+  requireRole("admin", "coach"),
+  async (req, res) => {
+    const content = String(req.body && req.body.content ? req.body.content : "");
+    if (!content.trim()) {
+      return res.status(400).json({ message: "content is required" });
+    }
+
+    let rows;
+    try {
+      const text = content.trim();
+      if (text.startsWith("[") || text.startsWith("{")) {
+        const parsed = JSON.parse(text);
+        rows = Array.isArray(parsed) ? parsed : Array.isArray(parsed.rows) ? parsed.rows : [];
+      } else {
+        rows = parseCsvToObjects(text);
+      }
+    } catch (error) {
+      return res.status(400).json({ message: `Invalid file: ${error.message}` });
+    }
+
+    if (!Array.isArray(rows) || !rows.length) {
+      return res.status(400).json({ message: "No time rows found" });
+    }
+
+    const connection = await pool.getConnection();
+    let imported = 0;
+    const skipped = [];
+
+    try {
+      await connection.beginTransaction();
+
+      for (let i = 0; i < rows.length; i += 1) {
+        const row = rows[i];
+        const swimmerIdRaw = firstNonEmpty(row, ["swimmer_id"], "");
+        const swimmerEmail = firstNonEmpty(row, ["swimmer_email", "email"], "");
+        let swimmerId = swimmerIdRaw ? Number(swimmerIdRaw) : null;
+
+        if (!swimmerId && swimmerEmail) {
+          const [swimmerRows] = await connection.query(
+            `SELECT s.id
+             FROM swimmers s
+             JOIN users u ON u.id = s.user_id
+             WHERE u.email = ?
+             LIMIT 1`,
+            [swimmerEmail.toLowerCase()],
+          );
+          swimmerId = swimmerRows.length ? Number(swimmerRows[0].id) : null;
+        }
+
+        const stroke = normalizeStroke(firstNonEmpty(row, ["stroke"], ""));
+        const distanceMeters = Number(
+          firstNonEmpty(row, ["distance_meters", "distance", "meters"], "0"),
+        );
+        const bestTimeSeconds = parseTimeToSeconds(
+          firstNonEmpty(row, ["best_time", "time", "result_time"], ""),
+        );
+
+        if (!swimmerId || !stroke || !distanceMeters || bestTimeSeconds == null) {
+          skipped.push({ row: i + 1, reason: "Missing swimmer/stroke/distance/time" });
+          continue;
+        }
+
+        const course = firstNonEmpty(row, ["course"], "") || null;
+        const achievedOn =
+          normalizeDateOnly(firstNonEmpty(row, ["achieved_on", "date"], "")) || null;
+
+        await connection.query(
+          `INSERT INTO swimmer_best_times
+             (swimmer_id, stroke, distance_meters, course, best_time_seconds, best_time_text, achieved_on)
+           VALUES (?, ?, ?, ?, ?, ?, ?)
+           ON DUPLICATE KEY UPDATE
+             best_time_seconds = LEAST(best_time_seconds, VALUES(best_time_seconds)),
+             best_time_text = IF(VALUES(best_time_seconds) <= best_time_seconds, VALUES(best_time_text), best_time_text),
+             achieved_on = IF(VALUES(best_time_seconds) <= best_time_seconds, VALUES(achieved_on), achieved_on),
+             updated_at = CURRENT_TIMESTAMP`,
+          [
+            swimmerId,
+            stroke,
+            distanceMeters,
+            course,
+            bestTimeSeconds,
+            formatSeconds(bestTimeSeconds),
+            achievedOn,
+          ],
+        );
+        imported += 1;
+      }
+
+      await connection.commit();
+
+      return res.status(201).json({
+        message: "Times import complete",
+        imported,
+        skipped,
+      });
+    } catch (error) {
+      await connection.rollback();
+      return res.status(500).json({
+        message: "Failed to import swimmer times",
+        error: error.message,
+      });
+    } finally {
+      connection.release();
     }
   },
 );

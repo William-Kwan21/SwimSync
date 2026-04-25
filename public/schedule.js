@@ -766,7 +766,7 @@ async function openAttendanceModal(sessionId) {
         (swimmer) => `<tr data-swimmer-id="${swimmer.swimmer_id}">
           <td>${escHtml(swimmer.name)}</td>
           <td>
-            <select data-attendance-status="${swimmer.swimmer_id}" data-no-theme="true">
+            <select data-attendance-status="${swimmer.swimmer_id}">
               ${attendanceOptions(swimmer.status)}
             </select>
           </td>
@@ -776,6 +776,12 @@ async function openAttendanceModal(sessionId) {
         </tr>`,
       )
       .join("");
+
+    // Ensure attendance controls use the same themed dropdown UI.
+    initTomSelectForElement(attendanceSetAll);
+    attendanceTbody
+      .querySelectorAll("select[data-attendance-status]")
+      .forEach((selectEl) => initTomSelectForElement(selectEl));
   } catch (err) {
     showErr(attendanceError, `Failed to load attendance: ${err.message}`);
     attendanceTbody.innerHTML = `<tr><td colspan="3" class="muted-inline">Could not load swimmer roster.</td></tr>`;

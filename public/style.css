@@ -342,6 +342,39 @@ main {
   font-size: 0.8rem;
 }
 
+.split-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.chip-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.42rem;
+  margin-bottom: 0.92rem;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  border: 1px solid rgba(20, 80, 122, 0.2);
+  background: rgba(236, 248, 253, 0.86);
+  color: var(--ocean-900);
+  font-size: 0.78rem;
+  font-weight: 800;
+  padding: 0.26rem 0.62rem;
+}
+
+input[type="file"] {
+  width: 100%;
+  border: 1px solid rgba(20, 80, 122, 0.22);
+  border-radius: 10px;
+  padding: 0.5rem 0.62rem;
+  background: rgba(255, 255, 255, 0.92);
+}
+
 /* Buttons */
 .btn {
   border: none;
@@ -940,6 +973,10 @@ tbody tr:hover {
   .page-layout {
     grid-template-columns: 1fr;
     gap: 0.82rem;
+
+  .split-grid {
+    grid-template-columns: 1fr;
+  }
   }
 
   .site-sidebar-global {

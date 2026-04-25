@@ -326,6 +326,36 @@ async function initDatabase(config) {
     )
   `);
 
+  try {
+    await admin.query(
+      "ALTER TABLE meet_events ADD COLUMN is_selected TINYINT(1) NOT NULL DEFAULT 0 AFTER gender",
+    );
+  } catch (error) {
+    if (error.code !== "ER_DUP_FIELDNAME") {
+      throw error;
+    }
+  }
+
+  try {
+    await admin.query(
+      "ALTER TABLE meet_events ADD COLUMN qualifying_time_seconds DECIMAL(8,2) NULL AFTER is_selected",
+    );
+  } catch (error) {
+    if (error.code !== "ER_DUP_FIELDNAME") {
+      throw error;
+    }
+  }
+
+  try {
+    await admin.query(
+      "ALTER TABLE meet_events ADD COLUMN qualifying_time_text VARCHAR(20) NULL AFTER qualifying_time_seconds",
+    );
+  } catch (error) {
+    if (error.code !== "ER_DUP_FIELDNAME") {
+      throw error;
+    }
+  }
+
   await admin.query(`
     CREATE TABLE IF NOT EXISTS meet_entries (
       id INT AUTO_INCREMENT PRIMARY KEY,
@@ -342,6 +372,62 @@ async function initDatabase(config) {
       CONSTRAINT fk_meet_entries_swimmer
         FOREIGN KEY (swimmer_id) REFERENCES swimmers(id)
         ON DELETE CASCADE ON UPDATE CASCADE
+    )
+  `);
+
+  await admin.query(`
+    CREATE TABLE IF NOT EXISTS meet_days (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      meet_id INT NOT NULL,
+      meet_day DATE NOT NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      CONSTRAINT uq_meet_days UNIQUE (meet_id, meet_day),
+      CONSTRAINT fk_meet_days_meet
+        FOREIGN KEY (meet_id) REFERENCES meets(id)
+        ON DELETE CASCADE ON UPDATE CASCADE
+    )
+  `);
+
+  await admin.query(`
+    CREATE TABLE IF NOT EXISTS swimmer_best_times (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      swimmer_id INT NOT NULL,
+      stroke VARCHAR(40) NOT NULL,
+      distance_meters INT NOT NULL,
+      course VARCHAR(20) NULL,
+      best_time_seconds DECIMAL(8,2) NOT NULL,
+      best_time_text VARCHAR(20) NULL,
+      achieved_on DATE NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      CONSTRAINT uq_swimmer_best_times UNIQUE (swimmer_id, stroke, distance_meters, course),
+      CONSTRAINT fk_swimmer_best_times_swimmer
+        FOREIGN KEY (swimmer_id) REFERENCES swimmers(id)
+        ON DELETE CASCADE ON UPDATE CASCADE
+    )
+  `);
+
+  await admin.query(`
+    CREATE TABLE IF NOT EXISTS meet_declarations (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      meet_id INT NOT NULL,
+      swimmer_id INT NOT NULL,
+      meet_day DATE NOT NULL,
+      status ENUM('yes', 'no', 'maybe') NOT NULL DEFAULT 'maybe',
+      note VARCHAR(255) NULL,
+      declared_by_user_id INT NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      CONSTRAINT uq_meet_declaration UNIQUE (meet_id, swimmer_id, meet_day),
+      CONSTRAINT fk_meet_declarations_meet
+        FOREIGN KEY (meet_id) REFERENCES meets(id)
+        ON DELETE CASCADE ON UPDATE CASCADE,
+      CONSTRAINT fk_meet_declarations_swimmer
+        FOREIGN KEY (swimmer_id) REFERENCES swimmers(id)
+        ON DELETE CASCADE ON UPDATE CASCADE,
+      CONSTRAINT fk_meet_declarations_user
+        FOREIGN KEY (declared_by_user_id) REFERENCES users(id)
+        ON DELETE SET NULL ON UPDATE CASCADE
     )
   `);
 
