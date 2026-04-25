@@ -147,15 +147,11 @@ function applyRoleUI() {
     actionColumnHeading.textContent = "Access";
   }
 
-  if (currentUser.role === "swimmer" || currentUser.role === "parent") {
-    show(attendanceCard);
-  } else {
-    hide(attendanceCard);
-  }
+  show(attendanceCard);
 }
 
 async function loadAttendanceSummary() {
-  if (!currentUser || (currentUser.role !== "swimmer" && currentUser.role !== "parent")) {
+  if (!currentUser) {
     return;
   }
 

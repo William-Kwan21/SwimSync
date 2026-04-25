@@ -507,6 +507,23 @@ function initTomSelectForElement(selectEl) {
   });
 }
 
+function getSelectValue(selectEl) {
+  if (!selectEl) return "";
+  if (selectEl.tomselect) {
+    return String(selectEl.tomselect.getValue() || "");
+  }
+  return String(selectEl.value || "");
+}
+
+function setSelectValue(selectEl, value) {
+  if (!selectEl) return;
+  if (selectEl.tomselect) {
+    selectEl.tomselect.setValue(value, true);
+    return;
+  }
+  selectEl.value = value;
+}
+
 function resetSelectOptions(selectEl, optionsMarkup) {
   if (!selectEl) return;
 
@@ -817,7 +834,7 @@ async function submitAttendance() {
       const noteInput = row.querySelector("input[data-attendance-note]");
       return {
         swimmer_id: swimmerId,
-        status: statusSelect ? statusSelect.value : "unmarked",
+        status: statusSelect ? getSelectValue(statusSelect) : "unmarked",
         note: noteInput ? noteInput.value.trim() : "",
       };
     })
@@ -1142,7 +1159,8 @@ if (attendanceForm) {
 
 if (attendanceSetAll) {
   attendanceSetAll.addEventListener("change", () => {
-    if (!attendanceSetAll.value) {
+    const selectedValue = getSelectValue(attendanceSetAll);
+    if (!selectedValue) {
       return;
     }
 
@@ -1150,7 +1168,7 @@ if (attendanceSetAll) {
       "select[data-attendance-status]",
     );
     selects.forEach((selectEl) => {
-      selectEl.value = attendanceSetAll.value;
+      setSelectValue(selectEl, selectedValue);
     });
   });
 }

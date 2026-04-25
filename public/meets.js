@@ -9,13 +9,14 @@ const meetImportStatus = document.getElementById("meet-import-status");
 const btnImportMeet = document.getElementById("btn-import-meet");
 
 const timesImportForm = document.getElementById("times-import-form");
+const timesImportSwimmer = document.getElementById("times-import-swimmer");
 const timesImportFile = document.getElementById("times-import-file");
 const timesImportStatus = document.getElementById("times-import-status");
 const btnImportTimes = document.getElementById("btn-import-times");
 
 const manualTimeCard = document.getElementById("manual-time-card");
 const manualTimeForm = document.getElementById("manual-time-form");
-const timeSwimmerId = document.getElementById("time-swimmer-id");
+const timeSwimmerName = document.getElementById("time-swimmer-name");
 const timeStroke = document.getElementById("time-stroke");
 const timeDistance = document.getElementById("time-distance");
 const timeBest = document.getElementById("time-best");
@@ -363,11 +364,126 @@ async function loadTimes() {
   }
 }
 
+async function loadSwimmerOptionsForManualTime() {
+  if (!timeSwimmerName && !timesImportSwimmer) {
+    return;
+  }
+
+  try {
+    const res = await apiFetch("/api/team");
+    if (!res.ok) {
+      throw new Error(`Server error: ${res.status}`);
+    }
+
+    const data = await res.json();
+    const swimmers = Array.isArray(data && data.swimmers) ? data.swimmers : [];
+
+    if (!swimmers.length) {
+      if (timeSwimmerName) {
+        timeSwimmerName.innerHTML = '<option value="">No swimmers found</option>';
+      }
+      if (timesImportSwimmer) {
+        timesImportSwimmer.innerHTML = '<option value="">No swimmers found</option>';
+      }
+      return;
+    }
+
+    const options = swimmers
+      .map(
+        (swimmer) =>
+          `<option value="${swimmer.swimmer_id}">${escHtml(swimmer.name)}${swimmer.group_name ? ` (${escHtml(swimmer.group_name)})` : ""}</option>`,
+      )
+      .join("");
+
+    if (timeSwimmerName) {
+      timeSwimmerName.innerHTML = `<option value="">Select swimmer...</option>${options}`;
+    }
+
+    if (timesImportSwimmer) {
+      timesImportSwimmer.innerHTML = `<option value="">Auto-detect from file</option>${options}`;
+    }
+
+    if (typeof TomSelect !== "undefined") {
+      if (timeSwimmerName && timeSwimmerName.tomselect) {
+        timeSwimmerName.tomselect.destroy();
+      }
+
+      if (timesImportSwimmer && timesImportSwimmer.tomselect) {
+        timesImportSwimmer.tomselect.destroy();
+      }
+
+      if (timeSwimmerName) {
+        new TomSelect(timeSwimmerName, {
+          create: false,
+          allowEmptyOption: true,
+          maxOptions: 500,
+          searchField: ["text"],
+          dropdownParent: "body",
+          copyClassesToDropdown: true,
+        });
+      }
+
+      if (timesImportSwimmer) {
+        new TomSelect(timesImportSwimmer, {
+          create: false,
+          allowEmptyOption: true,
+          maxOptions: 500,
+          searchField: ["text"],
+          dropdownParent: "body",
+          copyClassesToDropdown: true,
+        });
+      }
+    }
+  } catch (error) {
+    if (timeSwimmerName) {
+      timeSwimmerName.innerHTML = '<option value="">Failed to load swimmers</option>';
+    }
+    if (timesImportSwimmer) {
+      timesImportSwimmer.innerHTML = '<option value="">Failed to load swimmers</option>';
+    }
+    showState(manualTimeStatus, `Could not load swimmers: ${error.message}`, "error");
+  }
+}
+
+function toBase64FromArrayBuffer(arrayBuffer) {
+  const bytes = new Uint8Array(arrayBuffer);
+  let binary = "";
+  const chunkSize = 0x8000;
+
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    const chunk = bytes.subarray(i, i + chunkSize);
+    binary += String.fromCharCode(...chunk);
+  }
+
+  return btoa(binary);
+}
+
 async function readSelectedFile(inputEl) {
   if (!inputEl || !inputEl.files || !inputEl.files[0]) {
     throw new Error("Please choose a file first.");
   }
-  return inputEl.files[0].text();
+
+  const file = inputEl.files[0];
+  const isPdf =
+    String(file.type || "").toLowerCase() === "application/pdf" ||
+    String(file.name || "").toLowerCase().endsWith(".pdf");
+
+  if (isPdf) {
+    const arrayBuffer = await file.arrayBuffer();
+    return {
+      content: toBase64FromArrayBuffer(arrayBuffer),
+      file_type: "pdf",
+      file_name: file.name,
+      encoding: "base64",
+    };
+  }
+
+  return {
+    content: await file.text(),
+    file_type: file.type || "text/plain",
+    file_name: file.name,
+    encoding: "utf8",
+  };
 }
 
 meetImportForm.addEventListener("submit", async (event) => {
@@ -376,11 +492,11 @@ meetImportForm.addEventListener("submit", async (event) => {
   btnImportMeet.textContent = "Importing...";
 
   try {
-    const content = await readSelectedFile(meetImportFile);
+    const filePayload = await readSelectedFile(meetImportFile);
     const res = await apiFetch("/api/meets/import", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ content }),
+      body: JSON.stringify(filePayload),
     });
 
     const data = await safeJson(res);
@@ -405,11 +521,23 @@ timesImportForm.addEventListener("submit", async (event) => {
   btnImportTimes.textContent = "Importing...";
 
   try {
-    const content = await readSelectedFile(timesImportFile);
+    const filePayload = await readSelectedFile(timesImportFile);
+    const selectedDefaultSwimmer = Number(
+      timesImportSwimmer && timesImportSwimmer.tomselect
+        ? timesImportSwimmer.tomselect.getValue()
+        : timesImportSwimmer
+          ? timesImportSwimmer.value
+          : "",
+    );
+
+    if (Number.isInteger(selectedDefaultSwimmer) && selectedDefaultSwimmer > 0) {
+      filePayload.default_swimmer_id = selectedDefaultSwimmer;
+    }
+
     const res = await apiFetch("/api/swimmer-times/import", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ content }),
+      body: JSON.stringify(filePayload),
     });
 
     const data = await safeJson(res);
@@ -420,6 +548,9 @@ timesImportForm.addEventListener("submit", async (event) => {
     const skipped = Array.isArray(data.skipped) ? data.skipped.length : 0;
     showState(timesImportStatus, `Imported ${data.imported} rows (${skipped} skipped).`, "info");
     timesImportForm.reset();
+    if (timesImportSwimmer && timesImportSwimmer.tomselect) {
+      timesImportSwimmer.tomselect.clear(true);
+    }
     await loadTimes();
   } catch (error) {
     showState(timesImportStatus, `Times import failed: ${error.message}`, "error");
@@ -436,7 +567,11 @@ manualTimeForm.addEventListener("submit", async (event) => {
 
   try {
     const payload = {
-      swimmer_id: Number(timeSwimmerId.value),
+      swimmer_id: Number(
+        timeSwimmerName && timeSwimmerName.tomselect
+          ? timeSwimmerName.tomselect.getValue()
+          : timeSwimmerName.value,
+      ),
       stroke: timeStroke.value,
       distance_meters: Number(timeDistance.value),
       best_time: timeBest.value,
@@ -582,6 +717,9 @@ async function init() {
 
   applyRoleUI();
   await checkHealth();
+  if (currentUser.role === "admin" || currentUser.role === "coach") {
+    await loadSwimmerOptionsForManualTime();
+  }
   await Promise.all([loadMeets(), loadTimes()]);
 }
 

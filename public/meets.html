@@ -45,7 +45,7 @@
             <form id="meet-import-form" class="form-grid" autocomplete="off">
               <div class="form-row form-row-full">
                 <label for="meet-import-file">Meet file (JSON or CSV)</label>
-                <input id="meet-import-file" type="file" accept=".json,.csv,.txt" required />
+                <input id="meet-import-file" type="file" accept=".json,.csv,.txt,.pdf" required />
               </div>
               <div id="meet-import-status" class="state-msg hidden form-row-full"></div>
               <div class="form-row form-row-full">
@@ -60,8 +60,14 @@
             </div>
             <form id="times-import-form" class="form-grid" autocomplete="off">
               <div class="form-row form-row-full">
+                <label for="times-import-swimmer">Default Swimmer (recommended for single-swimmer exports)</label>
+                <select id="times-import-swimmer">
+                  <option value="">Auto-detect from file</option>
+                </select>
+              </div>
+              <div class="form-row form-row-full">
                 <label for="times-import-file">Times file (JSON or CSV)</label>
-                <input id="times-import-file" type="file" accept=".json,.csv,.txt" required />
+                <input id="times-import-file" type="file" accept=".json,.csv,.txt,.pdf" required />
               </div>
               <div id="times-import-status" class="state-msg hidden form-row-full"></div>
               <div class="form-row form-row-full">
@@ -77,8 +83,10 @@
           </div>
           <form id="manual-time-form" class="form-grid" autocomplete="off">
             <div class="form-row">
-              <label for="time-swimmer-id">Swimmer ID</label>
-              <input id="time-swimmer-id" type="number" min="1" required />
+              <label for="time-swimmer-name">Swimmer</label>
+              <select id="time-swimmer-name" required>
+                <option value="">Loading swimmers...</option>
+              </select>
             </div>
             <div class="form-row">
               <label for="time-stroke">Stroke</label>

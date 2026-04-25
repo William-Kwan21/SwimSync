@@ -289,6 +289,80 @@ function parseCsvToObjects(content) {
   return rows;
 }
 
+function parseCsvFromAnyText(content) {
+  const rawLines = String(content || "")
+    .replace(/\r\n/g, "\n")
+    .replace(/\r/g, "\n")
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  const candidateLines = rawLines.filter((line) => line.includes(","));
+  if (candidateLines.length < 2) {
+    return [];
+  }
+
+  return parseCsvToObjects(candidateLines.join("\n"));
+}
+
+async function extractTextFromPdfBase64(base64) {
+  let pdfParse;
+  try {
+    pdfParse = require("pdf-parse");
+  } catch (_error) {
+    throw new Error(
+      "PDF support requires pdf-parse. Run npm install to install dependencies.",
+    );
+  }
+
+  let buffer;
+  try {
+    buffer = Buffer.from(String(base64 || ""), "base64");
+  } catch (_error) {
+    throw new Error("Invalid base64 PDF payload");
+  }
+
+  if (!buffer.length) {
+    throw new Error("PDF payload is empty");
+  }
+
+  const parsed = await pdfParse(buffer);
+  const text = String(parsed && parsed.text ? parsed.text : "").trim();
+  if (!text) {
+    throw new Error("Unable to read text from PDF");
+  }
+
+  return text;
+}
+
+async function getImportedTextFromPayload(payload) {
+  const rawContent = payload && payload.content ? String(payload.content) : "";
+  const rawType = payload && payload.file_type ? String(payload.file_type) : "";
+  const rawName = payload && payload.file_name ? String(payload.file_name) : "";
+  const rawEncoding = payload && payload.encoding ? String(payload.encoding) : "utf8";
+
+  const lowerType = rawType.trim().toLowerCase();
+  const lowerName = rawName.trim().toLowerCase();
+  const isPdf =
+    lowerType === "pdf" ||
+    lowerType === "application/pdf" ||
+    lowerName.endsWith(".pdf");
+
+  if (!rawContent.trim()) {
+    throw new Error("content is required");
+  }
+
+  if (!isPdf) {
+    return rawContent;
+  }
+
+  if (rawEncoding !== "base64") {
+    throw new Error("PDF uploads must be sent as base64 content");
+  }
+
+  return extractTextFromPdfBase64(rawContent);
+}
+
 function firstNonEmpty(obj, keys, fallback = "") {
   for (const key of keys) {
     const value = obj && obj[key];
@@ -297,6 +371,79 @@ function firstNonEmpty(obj, keys, fallback = "") {
     }
   }
   return fallback;
+}
+
+function normalizeNameForLookup(name) {
+  return String(name || "")
+    .toLowerCase()
+    .replace(/\.[a-z0-9]+$/i, "")
+    .replace(/\b(times?|results?|export)\b/g, "")
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function parseEventCode(rawEventCode) {
+  const value = String(rawEventCode || "").trim();
+  if (!value) {
+    return { stroke: "", distance_meters: null, course: null };
+  }
+
+  const match = value.match(/^(\d+)\s+([A-Za-z]+)\s+([A-Za-z]{3})$/i);
+  if (!match) {
+    return { stroke: "", distance_meters: null, course: null };
+  }
+
+  const distance_meters = Number(match[1]);
+  const strokeCode = match[2].toUpperCase();
+  const course = match[3].toUpperCase();
+  const strokeMap = {
+    FR: "freestyle",
+    FREE: "freestyle",
+    BK: "backstroke",
+    BACK: "backstroke",
+    BR: "breaststroke",
+    BREAST: "breaststroke",
+    FL: "butterfly",
+    FLY: "butterfly",
+    IM: "individual medley",
+  };
+
+  return {
+    stroke: normalizeStroke(strokeMap[strokeCode] || strokeCode),
+    distance_meters: Number.isFinite(distance_meters) ? distance_meters : null,
+    course,
+  };
+}
+
+async function findSwimmerIdByName(connection, swimmerName) {
+  const normalizedInput = normalizeNameForLookup(swimmerName);
+  if (!normalizedInput) {
+    return null;
+  }
+
+  const [rows] = await connection.query(
+    `SELECT s.id AS swimmer_id, u.name
+     FROM swimmers s
+     JOIN users u ON u.id = s.user_id`,
+  );
+
+  const exact = rows.find(
+    (row) => normalizeNameForLookup(row.name) === normalizedInput,
+  );
+  if (exact) {
+    return Number(exact.swimmer_id);
+  }
+
+  const partial = rows.find((row) => {
+    const normalizedRowName = normalizeNameForLookup(row.name);
+    return (
+      normalizedRowName.includes(normalizedInput) ||
+      normalizedInput.includes(normalizedRowName)
+    );
+  });
+
+  return partial ? Number(partial.swimmer_id) : null;
 }
 
 function normalizeDateOnly(value) {
@@ -341,6 +488,9 @@ function parseMeetFileContent(content) {
     }
   } else {
     payloadRows = parseCsvToObjects(text);
+    if (!payloadRows.length) {
+      payloadRows = parseCsvFromAnyText(text);
+    }
   }
 
   if (!Array.isArray(payloadRows) || payloadRows.length === 0) {
@@ -1287,35 +1437,56 @@ app.get("/api/attendance/summary", authenticate, async (req, res) => {
   try {
     const swimmerIds = await getAccessibleSwimmerIdsForUser(req.user);
 
-    if (!Array.isArray(swimmerIds)) {
-      return res.json([]);
-    }
+    let rows;
+    if (Array.isArray(swimmerIds)) {
+      if (swimmerIds.length === 0) {
+        return res.json([]);
+      }
 
-    if (swimmerIds.length === 0) {
-      return res.json([]);
+      const [result] = await pool.query(
+        `SELECT s.id AS swimmer_id,
+                u.name AS swimmer_name,
+                SUM(CASE WHEN a.status = 'present' THEN 1 ELSE 0 END) AS present_count,
+                SUM(CASE WHEN a.status = 'late' THEN 1 ELSE 0 END) AS late_count,
+                SUM(CASE WHEN a.status = 'absent' THEN 1 ELSE 0 END) AS absent_count,
+                SUM(CASE WHEN a.status = 'excused' THEN 1 ELSE 0 END) AS excused_count,
+                SUM(CASE WHEN a.status IN ('present', 'late', 'absent', 'excused') THEN 1 ELSE 0 END) AS marked_count,
+                ROUND(
+                  100 * SUM(CASE WHEN a.status IN ('present', 'late') THEN 1 ELSE 0 END) /
+                  NULLIF(SUM(CASE WHEN a.status IN ('present', 'late', 'absent', 'excused') THEN 1 ELSE 0 END), 0),
+                  1
+                ) AS attendance_rate
+         FROM swimmers s
+         JOIN users u ON u.id = s.user_id
+         LEFT JOIN attendance a ON a.swimmer_id = s.id
+         WHERE s.id IN (${swimmerIds.map(() => "?").join(",")})
+         GROUP BY s.id, u.name
+         ORDER BY u.name ASC`,
+        swimmerIds,
+      );
+      rows = result;
+    } else {
+      const [result] = await pool.query(
+        `SELECT s.id AS swimmer_id,
+                u.name AS swimmer_name,
+                SUM(CASE WHEN a.status = 'present' THEN 1 ELSE 0 END) AS present_count,
+                SUM(CASE WHEN a.status = 'late' THEN 1 ELSE 0 END) AS late_count,
+                SUM(CASE WHEN a.status = 'absent' THEN 1 ELSE 0 END) AS absent_count,
+                SUM(CASE WHEN a.status = 'excused' THEN 1 ELSE 0 END) AS excused_count,
+                SUM(CASE WHEN a.status IN ('present', 'late', 'absent', 'excused') THEN 1 ELSE 0 END) AS marked_count,
+                ROUND(
+                  100 * SUM(CASE WHEN a.status IN ('present', 'late') THEN 1 ELSE 0 END) /
+                  NULLIF(SUM(CASE WHEN a.status IN ('present', 'late', 'absent', 'excused') THEN 1 ELSE 0 END), 0),
+                  1
+                ) AS attendance_rate
+         FROM swimmers s
+         JOIN users u ON u.id = s.user_id
+         LEFT JOIN attendance a ON a.swimmer_id = s.id
+         GROUP BY s.id, u.name
+         ORDER BY u.name ASC`,
+      );
+      rows = result;
     }
-
-    const [rows] = await pool.query(
-      `SELECT s.id AS swimmer_id,
-              u.name AS swimmer_name,
-              SUM(CASE WHEN a.status = 'present' THEN 1 ELSE 0 END) AS present_count,
-              SUM(CASE WHEN a.status = 'late' THEN 1 ELSE 0 END) AS late_count,
-              SUM(CASE WHEN a.status = 'absent' THEN 1 ELSE 0 END) AS absent_count,
-              SUM(CASE WHEN a.status = 'excused' THEN 1 ELSE 0 END) AS excused_count,
-              SUM(CASE WHEN a.status IN ('present', 'late', 'absent', 'excused') THEN 1 ELSE 0 END) AS marked_count,
-              ROUND(
-                100 * SUM(CASE WHEN a.status IN ('present', 'late') THEN 1 ELSE 0 END) /
-                NULLIF(SUM(CASE WHEN a.status IN ('present', 'late', 'absent', 'excused') THEN 1 ELSE 0 END), 0),
-                1
-              ) AS attendance_rate
-       FROM swimmers s
-       JOIN users u ON u.id = s.user_id
-       LEFT JOIN attendance a ON a.swimmer_id = s.id
-       WHERE s.id IN (${swimmerIds.map(() => "?").join(",")})
-       GROUP BY s.id, u.name
-       ORDER BY u.name ASC`,
-      swimmerIds,
-    );
 
     return res.json(rows);
   } catch (error) {
@@ -1777,10 +1948,11 @@ app.post(
   authenticate,
   requireRole("admin"),
   async (req, res) => {
-    const content = String(req.body && req.body.content ? req.body.content : "");
-
-    if (!content.trim()) {
-      return res.status(400).json({ message: "content is required" });
+    let content;
+    try {
+      content = await getImportedTextFromPayload(req.body);
+    } catch (error) {
+      return res.status(400).json({ message: error.message });
     }
 
     let parsedMeet;
@@ -2299,9 +2471,11 @@ app.post(
   authenticate,
   requireRole("admin", "coach"),
   async (req, res) => {
-    const content = String(req.body && req.body.content ? req.body.content : "");
-    if (!content.trim()) {
-      return res.status(400).json({ message: "content is required" });
+    let content;
+    try {
+      content = await getImportedTextFromPayload(req.body);
+    } catch (error) {
+      return res.status(400).json({ message: error.message });
     }
 
     let rows;
@@ -2321,6 +2495,10 @@ app.post(
       return res.status(400).json({ message: "No time rows found" });
     }
 
+    const importFileName = String(req.body && req.body.file_name ? req.body.file_name : "");
+    const requestedDefaultSwimmerId = Number(
+      req.body && req.body.default_swimmer_id ? req.body.default_swimmer_id : 0,
+    );
     const connection = await pool.getConnection();
     let imported = 0;
     const skipped = [];
@@ -2328,10 +2506,34 @@ app.post(
     try {
       await connection.beginTransaction();
 
+      let explicitDefaultSwimmerId = null;
+      if (
+        Number.isInteger(requestedDefaultSwimmerId) &&
+        requestedDefaultSwimmerId > 0
+      ) {
+        const [defaultSwimmerRows] = await connection.query(
+          "SELECT id FROM swimmers WHERE id = ? LIMIT 1",
+          [requestedDefaultSwimmerId],
+        );
+        if (!defaultSwimmerRows.length) {
+          await connection.rollback();
+          return res.status(400).json({
+            message: `default_swimmer_id does not exist: ${requestedDefaultSwimmerId}`,
+          });
+        }
+        explicitDefaultSwimmerId = requestedDefaultSwimmerId;
+      }
+
+      const defaultSwimmerFromFilename = await findSwimmerIdByName(
+        connection,
+        importFileName,
+      );
+
       for (let i = 0; i < rows.length; i += 1) {
         const row = rows[i];
         const swimmerIdRaw = firstNonEmpty(row, ["swimmer_id"], "");
         const swimmerEmail = firstNonEmpty(row, ["swimmer_email", "email"], "");
+        const swimmerName = firstNonEmpty(row, ["swimmer_name", "swimmer", "name", "athlete"], "");
         let swimmerId = swimmerIdRaw ? Number(swimmerIdRaw) : null;
 
         if (!swimmerId && swimmerEmail) {
@@ -2346,12 +2548,46 @@ app.post(
           swimmerId = swimmerRows.length ? Number(swimmerRows[0].id) : null;
         }
 
-        const stroke = normalizeStroke(firstNonEmpty(row, ["stroke"], ""));
+        if (!swimmerId && swimmerName) {
+          swimmerId = await findSwimmerIdByName(connection, swimmerName);
+        }
+
+        if (!swimmerId && explicitDefaultSwimmerId) {
+          swimmerId = explicitDefaultSwimmerId;
+        }
+
+        if (!swimmerId && defaultSwimmerFromFilename) {
+          swimmerId = defaultSwimmerFromFilename;
+        }
+
+        const parsedEventCode = parseEventCode(
+          firstNonEmpty(row, ["event code", "event_code", "event"], ""),
+        );
+
+        const stroke = normalizeStroke(
+          firstNonEmpty(row, ["stroke"], parsedEventCode.stroke || ""),
+        );
         const distanceMeters = Number(
-          firstNonEmpty(row, ["distance_meters", "distance", "meters"], "0"),
+          firstNonEmpty(
+            row,
+            ["distance_meters", "distance", "meters"],
+            parsedEventCode.distance_meters != null
+              ? String(parsedEventCode.distance_meters)
+              : "0",
+          ),
         );
         const bestTimeSeconds = parseTimeToSeconds(
-          firstNonEmpty(row, ["best_time", "time", "result_time"], ""),
+          firstNonEmpty(
+            row,
+            [
+              "best_time",
+              "time",
+              "result_time",
+              "swim time formatted",
+              "swim time adj formatted",
+            ],
+            "",
+          ),
         );
 
         if (!swimmerId || !stroke || !distanceMeters || bestTimeSeconds == null) {
@@ -2359,9 +2595,12 @@ app.post(
           continue;
         }
 
-        const course = firstNonEmpty(row, ["course"], "") || null;
+        const course =
+          firstNonEmpty(row, ["course"], parsedEventCode.course || "") || null;
         const achievedOn =
-          normalizeDateOnly(firstNonEmpty(row, ["achieved_on", "date"], "")) || null;
+          normalizeDateOnly(
+            firstNonEmpty(row, ["achieved_on", "date", "textbox22"], ""),
+          ) || null;
 
         await connection.query(
           `INSERT INTO swimmer_best_times
