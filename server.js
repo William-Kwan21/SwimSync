@@ -1,6 +1,7 @@
 require("dotenv").config();
 
 const bcrypt = require("bcryptjs");
+const Busboy = require("busboy");
 const express = require("express");
 const jwt = require("jsonwebtoken");
 const path = require("path");
@@ -335,6 +336,64 @@ async function extractTextFromPdfBase64(base64) {
   return text;
 }
 
+function parseMultipartUpload(req) {
+  return new Promise((resolve, reject) => {
+    const contentType = req.headers["content-type"] || "";
+    if (!contentType.toLowerCase().includes("multipart/form-data")) {
+      resolve({ fields: {}, file: null, fileName: "" });
+      return;
+    }
+
+    const busboy = Busboy({
+      headers: req.headers,
+      limits: {
+        fileSize: 100 * 1024 * 1024,
+      },
+    });
+
+    const fields = {};
+    let fileBuffer = null;
+    let fileName = "";
+    let fileMimeType = "";
+
+    busboy.on("field", (name, value) => {
+      fields[name] = value;
+    });
+
+    busboy.on("file", (_name, file, info) => {
+      fileName = info && info.filename ? info.filename : fileName;
+      fileMimeType = info && info.mimeType ? info.mimeType : fileMimeType;
+      const chunks = [];
+
+      file.on("data", (chunk) => {
+        chunks.push(chunk);
+      });
+
+      file.on("limit", () => {
+        reject(
+          new Error("Uploaded file is too large. Try a smaller PDF or CSV export."),
+        );
+      });
+
+      file.on("end", () => {
+        fileBuffer = Buffer.concat(chunks);
+      });
+    });
+
+    busboy.on("error", reject);
+    busboy.on("finish", () => {
+      resolve({
+        fields,
+        file: fileBuffer,
+        fileName,
+        fileMimeType,
+      });
+    });
+
+    req.pipe(busboy);
+  });
+}
+
 async function getImportedTextFromPayload(payload) {
   if (Buffer.isBuffer(payload)) {
     const parsed = await (async () => {
@@ -382,6 +441,44 @@ async function getImportedTextFromPayload(payload) {
   }
 
   throw new Error("PDF uploads must be sent as a raw PDF file or base64 content");
+}
+
+async function extractImportPayload(req) {
+  const contentType = String(req.headers["content-type"] || "").toLowerCase();
+
+  if (contentType.includes("multipart/form-data")) {
+    const multipart = await parseMultipartUpload(req);
+    const fileBuffer = multipart.file;
+    const fileName = multipart.fileName || "";
+    const defaultSwimmerId = multipart.fields.default_swimmer_id
+      ? Number(multipart.fields.default_swimmer_id)
+      : 0;
+
+    if (fileBuffer && fileBuffer.length) {
+      if (fileName.toLowerCase().endsWith(".pdf") || multipart.fileMimeType === "application/pdf") {
+        const content = await getImportedTextFromPayload(fileBuffer);
+        return {
+          content,
+          file_name: fileName,
+          default_swimmer_id: defaultSwimmerId,
+        };
+      }
+
+      return {
+        content: fileBuffer.toString("utf8"),
+        file_name: fileName,
+        default_swimmer_id: defaultSwimmerId,
+      };
+    }
+
+    return {
+      content: multipart.fields.content || "",
+      file_name: fileName,
+      default_swimmer_id: defaultSwimmerId,
+    };
+  }
+
+  return req.body || {};
 }
 
 function firstNonEmpty(obj, keys, fallback = "") {
@@ -2004,13 +2101,21 @@ app.get(
 
 app.post(
   "/api/meets/import",
-  express.raw({ type: "application/pdf", limit: "100mb" }),
   authenticate,
   requireRole("admin"),
   async (req, res) => {
+    let payload;
+    try {
+      payload = await extractImportPayload(req);
+    } catch (error) {
+      return res.status(400).json({ message: error.message });
+    }
+
     let content;
     try {
-      content = await getImportedTextFromPayload(req.body);
+      content = await getImportedTextFromPayload(
+        payload && payload.content ? payload.content : payload,
+      );
     } catch (error) {
       return res.status(400).json({ message: error.message });
     }
@@ -2577,13 +2682,21 @@ app.post(
 
 app.post(
   "/api/swimmer-times/import",
-  express.raw({ type: "application/pdf", limit: "100mb" }),
   authenticate,
   requireRole("admin", "coach"),
   async (req, res) => {
+    let payload;
+    try {
+      payload = await extractImportPayload(req);
+    } catch (error) {
+      return res.status(400).json({ message: error.message });
+    }
+
     let content;
     try {
-      content = await getImportedTextFromPayload(req.body);
+      content = await getImportedTextFromPayload(
+        payload && payload.content ? payload.content : payload,
+      );
     } catch (error) {
       return res.status(400).json({ message: error.message });
     }
@@ -2605,9 +2718,9 @@ app.post(
       return res.status(400).json({ message: "No time rows found" });
     }
 
-    const importFileName = String(req.body && req.body.file_name ? req.body.file_name : "");
+    const importFileName = String(payload && payload.file_name ? payload.file_name : req.headers["x-file-name"] || "");
     const requestedDefaultSwimmerId = Number(
-      req.body && req.body.default_swimmer_id ? req.body.default_swimmer_id : 0,
+      payload && payload.default_swimmer_id ? payload.default_swimmer_id : req.headers["x-default-swimmer-id"] || 0,
     );
     const connection = await pool.getConnection();
     let imported = 0;
