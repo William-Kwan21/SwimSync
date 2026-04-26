@@ -427,6 +427,14 @@ async function getImportedTextFromPayload(payload) {
     return parsed;
   }
 
+  if (typeof payload === "string") {
+    const text = payload.trim();
+    if (!text) {
+      throw new Error("content is required");
+    }
+    return text;
+  }
+
   const rawContent = payload && payload.content ? String(payload.content) : "";
   const rawType = payload && payload.file_type ? String(payload.file_type) : "";
   const rawName = payload && payload.file_name ? String(payload.file_name) : "";
@@ -2124,9 +2132,7 @@ app.post(
 
     let content;
     try {
-      content = await getImportedTextFromPayload(
-        payload && payload.content ? payload.content : payload,
-      );
+      content = await getImportedTextFromPayload(payload);
     } catch (error) {
       return res.status(400).json({ message: error.message });
     }
@@ -2705,9 +2711,7 @@ app.post(
 
     let content;
     try {
-      content = await getImportedTextFromPayload(
-        payload && payload.content ? payload.content : payload,
-      );
+      content = await getImportedTextFromPayload(payload);
     } catch (error) {
       return res.status(400).json({ message: error.message });
     }
