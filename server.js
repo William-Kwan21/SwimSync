@@ -1,7 +1,6 @@
 require("dotenv").config();
 
 const bcrypt = require("bcryptjs");
-const Busboy = require("busboy");
 const express = require("express");
 const jwt = require("jsonwebtoken");
 const path = require("path");
@@ -338,6 +337,18 @@ async function extractTextFromPdfBase64(base64) {
 
 function parseMultipartUpload(req) {
   return new Promise((resolve, reject) => {
+     let Busboy;
+    try {
+      Busboy = require("busboy");
+    } catch (_error) {
+      reject(
+        new Error(
+          "Multipart upload support is unavailable. Run npm install to install dependencies.",
+        ),
+      );
+      return;
+    }
+
     const contentType = req.headers["content-type"] || "";
     if (!contentType.toLowerCase().includes("multipart/form-data")) {
       resolve({ fields: {}, file: null, fileName: "" });
