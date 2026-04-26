@@ -527,10 +527,41 @@ async function readSelectedFile(inputEl) {
     String(file.name || "").toLowerCase().endsWith(".pdf");
 
   if (isPdf) {
+    if (window.pdfjsLib && window.pdfjsLib.GlobalWorkerOptions) {
+      window.pdfjsLib.GlobalWorkerOptions.workerSrc =
+        "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+    }
+
+    if (window.pdfjsLib && typeof window.pdfjsLib.getDocument === "function") {
+      const data = await file.arrayBuffer();
+      const pdf = await window.pdfjsLib.getDocument({ data }).promise;
+      let extractedText = "";
+
+      for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
+        const page = await pdf.getPage(pageNumber);
+        const content = await page.getTextContent();
+        const pageText = content.items.map((item) => item.str).join(" ");
+        extractedText += `${pageText}\n`;
+      }
+
+      const cleanedText = extractedText.trim();
+      if (!cleanedText) {
+        throw new Error("PDF did not contain readable text");
+      }
+
+      return {
+        content: cleanedText,
+        file_type: "pdf-text",
+        file_name: file.name,
+        encoding: "utf8",
+      };
+    }
+
     return {
+      content: await file.text(),
       file_type: "pdf",
       file_name: file.name,
-      file,
+      encoding: "utf8",
     };
   }
 
@@ -549,15 +580,7 @@ meetImportForm.addEventListener("submit", async (event) => {
 
   try {
     const filePayload = await readSelectedFile(meetImportFile);
-    const isPdf = filePayload.file && String(filePayload.file_type).toLowerCase() === "pdf";
-    const res = await apiFetch("/api/meets/import", isPdf ? {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/pdf",
-        "X-File-Name": filePayload.file_name || "",
-      },
-      body: filePayload.file,
-    } : {
+    const res = await apiFetch("/api/meets/import", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(filePayload),
@@ -598,16 +621,7 @@ timesImportForm.addEventListener("submit", async (event) => {
       filePayload.default_swimmer_id = selectedDefaultSwimmer;
     }
 
-    const isPdf = filePayload.file && String(filePayload.file_type).toLowerCase() === "pdf";
-    const res = await apiFetch("/api/swimmer-times/import", isPdf ? {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/pdf",
-        "X-File-Name": filePayload.file_name || "",
-        "X-Default-Swimmer-Id": Number.isInteger(selectedDefaultSwimmer) && selectedDefaultSwimmer > 0 ? String(selectedDefaultSwimmer) : "",
-      },
-      body: filePayload.file,
-    } : {
+    const res = await apiFetch("/api/swimmer-times/import", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(filePayload),

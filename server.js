@@ -720,7 +720,7 @@ async function getMeetEligibilityForSwimmers(meetId, swimmerIds) {
   };
 }
 
-app.use(express.json({ limit: "50mb" }));
+app.use(express.json({ limit: "100mb" }));
 app.use(express.static(path.join(__dirname, "public"), { index: false }));
 
 app.get("/", (_req, res) => {
@@ -2004,7 +2004,7 @@ app.get(
 
 app.post(
   "/api/meets/import",
-  express.raw({ type: "application/pdf", limit: "50mb" }),
+  express.raw({ type: "application/pdf", limit: "100mb" }),
   authenticate,
   requireRole("admin"),
   async (req, res) => {
@@ -2577,7 +2577,7 @@ app.post(
 
 app.post(
   "/api/swimmer-times/import",
-  express.raw({ type: "application/pdf", limit: "50mb" }),
+  express.raw({ type: "application/pdf", limit: "100mb" }),
   authenticate,
   requireRole("admin", "coach"),
   async (req, res) => {
