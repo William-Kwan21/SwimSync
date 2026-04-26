@@ -358,7 +358,11 @@ function parseMultipartUpload(req) {
     const busboy = Busboy({
       headers: req.headers,
       limits: {
-        fileSize: 100 * 1024 * 1024,
+        fileSize: 500 * 1024 * 1024,
+        fieldSize: 100 * 1024 * 1024,
+        fields: 100,
+        files: 10,
+        parts: 1000,
       },
     });
 
@@ -837,6 +841,7 @@ async function getMeetEligibilityForSwimmers(meetId, swimmerIds) {
 }
 
 app.use(express.json({ limit: "100mb" }));
+app.use(express.urlencoded({ limit: "100mb", extended: true }));
 app.use(express.static(path.join(__dirname, "public"), { index: false }));
 
 app.get("/", (_req, res) => {
