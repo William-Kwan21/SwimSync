@@ -516,19 +516,6 @@ async function loadSwimmerOptionsForManualTime() {
   }
 }
 
-function toBase64FromArrayBuffer(arrayBuffer) {
-  const bytes = new Uint8Array(arrayBuffer);
-  let binary = "";
-  const chunkSize = 0x8000;
-
-  for (let i = 0; i < bytes.length; i += chunkSize) {
-    const chunk = bytes.subarray(i, i + chunkSize);
-    binary += String.fromCharCode(...chunk);
-  }
-
-  return btoa(binary);
-}
-
 async function readSelectedFile(inputEl) {
   if (!inputEl || !inputEl.files || !inputEl.files[0]) {
     throw new Error("Please choose a file first.");
@@ -540,12 +527,10 @@ async function readSelectedFile(inputEl) {
     String(file.name || "").toLowerCase().endsWith(".pdf");
 
   if (isPdf) {
-    const arrayBuffer = await file.arrayBuffer();
     return {
-      content: toBase64FromArrayBuffer(arrayBuffer),
       file_type: "pdf",
       file_name: file.name,
-      encoding: "base64",
+      file,
     };
   }
 
@@ -564,7 +549,15 @@ meetImportForm.addEventListener("submit", async (event) => {
 
   try {
     const filePayload = await readSelectedFile(meetImportFile);
-    const res = await apiFetch("/api/meets/import", {
+    const isPdf = filePayload.file && String(filePayload.file_type).toLowerCase() === "pdf";
+    const res = await apiFetch("/api/meets/import", isPdf ? {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/pdf",
+        "X-File-Name": filePayload.file_name || "",
+      },
+      body: filePayload.file,
+    } : {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(filePayload),
@@ -605,7 +598,16 @@ timesImportForm.addEventListener("submit", async (event) => {
       filePayload.default_swimmer_id = selectedDefaultSwimmer;
     }
 
-    const res = await apiFetch("/api/swimmer-times/import", {
+    const isPdf = filePayload.file && String(filePayload.file_type).toLowerCase() === "pdf";
+    const res = await apiFetch("/api/swimmer-times/import", isPdf ? {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/pdf",
+        "X-File-Name": filePayload.file_name || "",
+        "X-Default-Swimmer-Id": Number.isInteger(selectedDefaultSwimmer) && selectedDefaultSwimmer > 0 ? String(selectedDefaultSwimmer) : "",
+      },
+      body: filePayload.file,
+    } : {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(filePayload),

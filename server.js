@@ -336,6 +336,27 @@ async function extractTextFromPdfBase64(base64) {
 }
 
 async function getImportedTextFromPayload(payload) {
+  if (Buffer.isBuffer(payload)) {
+    const parsed = await (async () => {
+      let pdfParse;
+      try {
+        pdfParse = require("pdf-parse");
+      } catch (_error) {
+        throw new Error(
+          "PDF support requires pdf-parse. Run npm install to install dependencies.",
+        );
+      }
+
+      const pdf = await pdfParse(payload);
+      const text = String(pdf && pdf.text ? pdf.text : "").trim();
+      if (!text) {
+        throw new Error("Unable to read text from PDF");
+      }
+      return text;
+    })();
+    return parsed;
+  }
+
   const rawContent = payload && payload.content ? String(payload.content) : "";
   const rawType = payload && payload.file_type ? String(payload.file_type) : "";
   const rawName = payload && payload.file_name ? String(payload.file_name) : "";
@@ -356,11 +377,11 @@ async function getImportedTextFromPayload(payload) {
     return rawContent;
   }
 
-  if (rawEncoding !== "base64") {
-    throw new Error("PDF uploads must be sent as base64 content");
+  if (rawEncoding === "base64") {
+    return extractTextFromPdfBase64(rawContent);
   }
 
-  return extractTextFromPdfBase64(rawContent);
+  throw new Error("PDF uploads must be sent as a raw PDF file or base64 content");
 }
 
 function firstNonEmpty(obj, keys, fallback = "") {
@@ -1983,6 +2004,7 @@ app.get(
 
 app.post(
   "/api/meets/import",
+  express.raw({ type: "application/pdf", limit: "50mb" }),
   authenticate,
   requireRole("admin"),
   async (req, res) => {
@@ -2555,6 +2577,7 @@ app.post(
 
 app.post(
   "/api/swimmer-times/import",
+  express.raw({ type: "application/pdf", limit: "50mb" }),
   authenticate,
   requireRole("admin", "coach"),
   async (req, res) => {
