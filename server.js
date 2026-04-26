@@ -699,7 +699,7 @@ async function getMeetEligibilityForSwimmers(meetId, swimmerIds) {
   };
 }
 
-app.use(express.json({ limit: "2mb" }));
+app.use(express.json({ limit: "50mb" }));
 app.use(express.static(path.join(__dirname, "public"), { index: false }));
 
 app.get("/", (_req, res) => {
@@ -2081,6 +2081,55 @@ app.post(
   },
 );
 
+app.post(
+  "/api/meets",
+  authenticate,
+  requireRole("admin", "coach"),
+  async (req, res) => {
+    const meetName = String(req.body && req.body.meet_name ? req.body.meet_name : "").trim();
+    const meetDate = normalizeDateOnly(req.body && req.body.meet_date);
+    const location = String(req.body && req.body.location ? req.body.location : "").trim();
+    const hostTeam = String(req.body && req.body.host_team ? req.body.host_team : "").trim();
+
+    if (!meetName || !meetDate) {
+      return res.status(400).json({ message: "meet_name and meet_date are required" });
+    }
+
+    try {
+      const coachId = await getCoachIdForUser(req.user.sub);
+      const [result] = await pool.query(
+        `INSERT INTO meets (meet_name, meet_date, location, host_team, created_by_coach_id)
+         VALUES (?, ?, ?, ?, ?)`,
+        [meetName, meetDate, location || null, hostTeam || null, coachId],
+      );
+
+      const meetId = result.insertId;
+      await pool.query(
+        "INSERT INTO meet_days (meet_id, meet_day) VALUES (?, ?) ON DUPLICATE KEY UPDATE meet_day = VALUES(meet_day)",
+        [meetId, meetDate],
+      );
+
+      const [rows] = await pool.query(
+        `SELECT id, meet_name, meet_date, location, host_team, created_at
+         FROM meets
+         WHERE id = ?
+         LIMIT 1`,
+        [meetId],
+      );
+
+      return res.status(201).json({
+        message: "Meet created",
+        meet: rows[0],
+      });
+    } catch (error) {
+      return res.status(500).json({
+        message: "Failed to create meet",
+        error: error.message,
+      });
+    }
+  },
+);
+
 app.get("/api/meets", authenticate, async (req, res) => {
   try {
     const [meetRows] = await pool.query(
@@ -2691,6 +2740,13 @@ app.use((req, res) => {
 
 /* ── global error handler ── */
 app.use((err, req, res, _next) => {
+  if (err && err.type === "entity.too.large") {
+    return res.status(413).json({
+      message:
+        "Uploaded file is too large. Try a smaller PDF or a CSV export for meet import.",
+    });
+  }
+
   console.error("Unhandled error:", err);
   res
     .status(500)

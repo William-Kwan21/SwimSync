@@ -3,6 +3,14 @@ const userRoleBadge = document.getElementById("user-role-badge");
 const btnLogout = document.getElementById("btn-logout");
 
 const adminImportCard = document.getElementById("admin-import-card");
+const adminCreateMeetCard = document.getElementById("admin-create-meet-card");
+const meetCreateForm = document.getElementById("meet-create-form");
+const meetCreateName = document.getElementById("meet-create-name");
+const meetCreateDate = document.getElementById("meet-create-date");
+const meetCreateLocation = document.getElementById("meet-create-location");
+const meetCreateHostTeam = document.getElementById("meet-create-host-team");
+const meetCreateStatus = document.getElementById("meet-create-status");
+const btnCreateMeet = document.getElementById("btn-create-meet");
 const meetImportForm = document.getElementById("meet-import-form");
 const meetImportFile = document.getElementById("meet-import-file");
 const meetImportStatus = document.getElementById("meet-import-status");
@@ -154,6 +162,12 @@ function applyRoleUI() {
   const canManageMeets = currentUser.role === "admin" || currentUser.role === "coach";
   const canImport = currentUser.role === "admin";
 
+  if (canManageMeets) {
+    show(adminCreateMeetCard);
+  } else {
+    hide(adminCreateMeetCard);
+  }
+
   if (canImport) {
     show(adminImportCard);
   } else {
@@ -165,6 +179,44 @@ function applyRoleUI() {
   } else {
     hide(manualTimeCard);
   }
+}
+
+if (meetCreateForm) {
+  meetCreateForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    hide(meetCreateStatus);
+    btnCreateMeet.disabled = true;
+    btnCreateMeet.textContent = "Adding...";
+
+    try {
+      const payload = {
+        meet_name: meetCreateName.value.trim(),
+        meet_date: meetCreateDate.value,
+        location: meetCreateLocation.value.trim(),
+        host_team: meetCreateHostTeam.value.trim(),
+      };
+
+      const res = await apiFetch("/api/meets", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      const data = await safeJson(res);
+      if (!res.ok) {
+        throw new Error((data && data.message) || `Failed (${res.status})`);
+      }
+
+      meetCreateForm.reset();
+      showState(meetCreateStatus, `Meet created: ${data.meet.meet_name}`, "info");
+      await loadMeets();
+    } catch (error) {
+      showState(meetCreateStatus, `Create failed: ${error.message}`, "error");
+    } finally {
+      btnCreateMeet.disabled = false;
+      btnCreateMeet.textContent = "Add Meet";
+    }
+  });
 }
 
 function renderMeetRow(meet) {

@@ -37,6 +37,34 @@
       </aside>
 
       <main class="page-main">
+        <section class="card hidden" id="admin-create-meet-card">
+          <div class="card-header">
+            <h2>Create Meet</h2>
+          </div>
+          <form id="meet-create-form" class="form-grid" autocomplete="off">
+            <div class="form-row">
+              <label for="meet-create-name">Meet Name</label>
+              <input id="meet-create-name" type="text" placeholder="Summer Invitational" required />
+            </div>
+            <div class="form-row">
+              <label for="meet-create-date">Meet Date</label>
+              <input id="meet-create-date" type="date" required />
+            </div>
+            <div class="form-row">
+              <label for="meet-create-location">Location</label>
+              <input id="meet-create-location" type="text" placeholder="Main Pool" />
+            </div>
+            <div class="form-row">
+              <label for="meet-create-host-team">Host Team</label>
+              <input id="meet-create-host-team" type="text" placeholder="SwimSync" />
+            </div>
+            <div id="meet-create-status" class="state-msg hidden form-row-full"></div>
+            <div class="form-row form-row-full">
+              <button class="btn btn-primary" id="btn-create-meet" type="submit">Add Meet</button>
+            </div>
+          </form>
+        </section>
+
         <section class="card split-grid hidden" id="admin-import-card">
           <div>
             <div class="card-header">
