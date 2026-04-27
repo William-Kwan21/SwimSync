@@ -165,8 +165,11 @@ CREATE TABLE IF NOT EXISTS meet_days (
   id INT AUTO_INCREMENT PRIMARY KEY,
   meet_id INT NOT NULL,
   meet_day DATE NOT NULL,
+  session_label VARCHAR(40) NOT NULL DEFAULT '',
+  age_group VARCHAR(40) NULL,
+  gender VARCHAR(20) NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  CONSTRAINT uq_meet_days UNIQUE (meet_id, meet_day),
+  CONSTRAINT uq_meet_days UNIQUE (meet_id, meet_day, session_label),
   CONSTRAINT fk_meet_days_meet
     FOREIGN KEY (meet_id) REFERENCES meets(id)
     ON DELETE CASCADE ON UPDATE CASCADE
@@ -194,12 +197,13 @@ CREATE TABLE IF NOT EXISTS meet_declarations (
   meet_id INT NOT NULL,
   swimmer_id INT NOT NULL,
   meet_day DATE NOT NULL,
+  session_label VARCHAR(40) NOT NULL DEFAULT '',
   status ENUM('yes', 'no', 'maybe') NOT NULL DEFAULT 'maybe',
   note VARCHAR(255) NULL,
   declared_by_user_id INT NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  CONSTRAINT uq_meet_declaration UNIQUE (meet_id, swimmer_id, meet_day),
+  CONSTRAINT uq_meet_declaration UNIQUE (meet_id, swimmer_id, meet_day, session_label),
   CONSTRAINT fk_meet_declarations_meet
     FOREIGN KEY (meet_id) REFERENCES meets(id)
     ON DELETE CASCADE ON UPDATE CASCADE,

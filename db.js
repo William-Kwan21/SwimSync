@@ -418,13 +418,64 @@ async function initDatabase(config) {
       id INT AUTO_INCREMENT PRIMARY KEY,
       meet_id INT NOT NULL,
       meet_day DATE NOT NULL,
+      session_label VARCHAR(40) NOT NULL DEFAULT '',
+      age_group VARCHAR(40) NULL,
+      gender VARCHAR(20) NULL,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-      CONSTRAINT uq_meet_days UNIQUE (meet_id, meet_day),
+      CONSTRAINT uq_meet_days UNIQUE (meet_id, meet_day, session_label),
       CONSTRAINT fk_meet_days_meet
         FOREIGN KEY (meet_id) REFERENCES meets(id)
         ON DELETE CASCADE ON UPDATE CASCADE
     )
   `);
+
+  try {
+    await admin.query(
+      "ALTER TABLE meet_days ADD COLUMN session_label VARCHAR(40) NOT NULL DEFAULT '' AFTER meet_day",
+    );
+  } catch (error) {
+    if (error.code !== "ER_DUP_FIELDNAME") {
+      throw error;
+    }
+  }
+
+  try {
+    await admin.query(
+      "ALTER TABLE meet_days ADD COLUMN age_group VARCHAR(40) NULL AFTER session_label",
+    );
+  } catch (error) {
+    if (error.code !== "ER_DUP_FIELDNAME") {
+      throw error;
+    }
+  }
+
+  try {
+    await admin.query(
+      "ALTER TABLE meet_days ADD COLUMN gender VARCHAR(20) NULL AFTER age_group",
+    );
+  } catch (error) {
+    if (error.code !== "ER_DUP_FIELDNAME") {
+      throw error;
+    }
+  }
+
+  try {
+    await admin.query("ALTER TABLE meet_days DROP INDEX uq_meet_days");
+  } catch (error) {
+    if (error.code !== "ER_CANT_DROP_FIELD_OR_KEY" && error.code !== "ER_DROP_INDEX_FK") {
+      throw error;
+    }
+  }
+
+  try {
+    await admin.query(
+      "ALTER TABLE meet_days ADD CONSTRAINT uq_meet_days UNIQUE (meet_id, meet_day, session_label)",
+    );
+  } catch (error) {
+    if (error.code !== "ER_DUP_KEYNAME") {
+      throw error;
+    }
+  }
 
   await admin.query(`
     CREATE TABLE IF NOT EXISTS swimmer_best_times (
@@ -451,12 +502,13 @@ async function initDatabase(config) {
       meet_id INT NOT NULL,
       swimmer_id INT NOT NULL,
       meet_day DATE NOT NULL,
+      session_label VARCHAR(40) NOT NULL DEFAULT '',
       status ENUM('yes', 'no', 'maybe') NOT NULL DEFAULT 'maybe',
       note VARCHAR(255) NULL,
       declared_by_user_id INT NULL,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-      CONSTRAINT uq_meet_declaration UNIQUE (meet_id, swimmer_id, meet_day),
+      CONSTRAINT uq_meet_declaration UNIQUE (meet_id, swimmer_id, meet_day, session_label),
       CONSTRAINT fk_meet_declarations_meet
         FOREIGN KEY (meet_id) REFERENCES meets(id)
         ON DELETE CASCADE ON UPDATE CASCADE,
@@ -468,6 +520,34 @@ async function initDatabase(config) {
         ON DELETE SET NULL ON UPDATE CASCADE
     )
   `);
+
+  try {
+    await admin.query(
+      "ALTER TABLE meet_declarations ADD COLUMN session_label VARCHAR(40) NOT NULL DEFAULT '' AFTER meet_day",
+    );
+  } catch (error) {
+    if (error.code !== "ER_DUP_FIELDNAME") {
+      throw error;
+    }
+  }
+
+  try {
+    await admin.query("ALTER TABLE meet_declarations DROP INDEX uq_meet_declaration");
+  } catch (error) {
+    if (error.code !== "ER_CANT_DROP_FIELD_OR_KEY" && error.code !== "ER_DROP_INDEX_FK") {
+      throw error;
+    }
+  }
+
+  try {
+    await admin.query(
+      "ALTER TABLE meet_declarations ADD CONSTRAINT uq_meet_declaration UNIQUE (meet_id, swimmer_id, meet_day, session_label)",
+    );
+  } catch (error) {
+    if (error.code !== "ER_DUP_KEYNAME") {
+      throw error;
+    }
+  }
 
   await seedUsers(admin);
   await seedRoleTables(admin);

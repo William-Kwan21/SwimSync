@@ -53,6 +53,10 @@ const declareControls = document.getElementById("declare-controls");
 const declareTbody = document.getElementById("declare-tbody");
 const declareStatus = document.getElementById("declare-status");
 const btnSaveDeclarations = document.getElementById("btn-save-declarations");
+const coachEntryControls = document.getElementById("coach-entry-controls");
+const coachEntryTbody = document.getElementById("coach-entry-tbody");
+const coachEntryStatus = document.getElementById("coach-entry-status");
+const btnSaveCoachEntries = document.getElementById("btn-save-coach-entries");
 
 const timesLoading = document.getElementById("times-loading");
 const timesError = document.getElementById("times-error");
@@ -266,7 +270,11 @@ async function loadMeets() {
 }
 
 function declarationKey(swimmerId, meetDay) {
-  return `${swimmerId}|${String(meetDay).slice(0, 10)}`;
+  return `${swimmerId}|${String(meetDay).slice(0, 10)}|`;
+}
+
+function declarationSessionKey(swimmerId, meetDay, sessionLabel) {
+  return `${swimmerId}|${String(meetDay).slice(0, 10)}|${String(sessionLabel || "").trim()}`;
 }
 
 function renderMeetDays(days) {
@@ -308,12 +316,25 @@ function renderDeclarationTable(detail) {
     return;
   }
 
-  const dayValues = detail.days.map((row) => String(row.meet_day).slice(0, 10));
+  const dayValues = (detail.days || []).map((row) => ({
+    meet_day: String(row.meet_day).slice(0, 10),
+    session_label: String(row.session_label || "").trim(),
+    age_group: row.age_group || "",
+    gender: row.gender || "",
+  }));
   const declarationMap = new Map();
+  const declarationEligibility = new Map();
+
+  (detail.declaration_eligibility || []).forEach((entry) => {
+    declarationEligibility.set(
+      declarationSessionKey(entry.swimmer_id, entry.meet_day, entry.session_label),
+      !!entry.allowed,
+    );
+  });
 
   (detail.declarations || []).forEach((entry) => {
     declarationMap.set(
-      declarationKey(entry.swimmer_id, entry.meet_day),
+      declarationSessionKey(entry.swimmer_id, entry.meet_day, entry.session_label),
       {
         status: entry.status || "maybe",
         note: entry.note || "",
@@ -323,22 +344,29 @@ function renderDeclarationTable(detail) {
 
   const rows = [];
   (detail.swimmers || []).forEach((swimmer) => {
-    dayValues.forEach((day) => {
-      const key = declarationKey(swimmer.swimmer_id, day);
+    dayValues.forEach((dayInfo) => {
+      const key = declarationSessionKey(swimmer.swimmer_id, dayInfo.meet_day, dayInfo.session_label);
       const existing = declarationMap.get(key) || { status: "maybe", note: "" };
+      const allowed = declarationEligibility.has(key) ? declarationEligibility.get(key) : true;
+      const sessionText = dayInfo.session_label
+        ? `${formatDate(dayInfo.meet_day)} · ${dayInfo.session_label}`
+        : formatDate(dayInfo.meet_day);
+      const ruleBits = [dayInfo.age_group || "", dayInfo.gender || ""].filter(Boolean).join(" · ");
+      const ruleText = ruleBits ? ` (${ruleBits})` : "";
+      const disabledAttr = allowed ? "" : "disabled";
 
       rows.push(`
         <tr>
           <td>${escHtml(swimmer.swimmer_name)}</td>
-          <td>${escHtml(formatDate(day))}</td>
+          <td>${escHtml(sessionText + ruleText)}</td>
           <td>
-            <select data-declare-status="${swimmer.swimmer_id}" data-day="${day}">
+            <select data-declare-status="${swimmer.swimmer_id}" data-day="${dayInfo.meet_day}" data-session-label="${escHtml(dayInfo.session_label)}" ${disabledAttr}>
               <option value="yes" ${existing.status === "yes" ? "selected" : ""}>Yes</option>
               <option value="no" ${existing.status === "no" ? "selected" : ""}>No</option>
               <option value="maybe" ${existing.status === "maybe" ? "selected" : ""}>Maybe</option>
             </select>
           </td>
-          <td><input type="text" data-declare-note="${swimmer.swimmer_id}" data-day="${day}" value="${escHtml(existing.note)}" placeholder="Optional note" /></td>
+          <td><input type="text" data-declare-note="${swimmer.swimmer_id}" data-day="${dayInfo.meet_day}" data-session-label="${escHtml(dayInfo.session_label)}" value="${escHtml(existing.note)}" placeholder="${allowed ? "Optional note" : "Not eligible for this session"}" ${disabledAttr} /></td>
         </tr>
       `);
     });
@@ -347,6 +375,63 @@ function renderDeclarationTable(detail) {
   declareTbody.innerHTML = rows.join("") || '<tr><td colspan="4" class="muted-inline">No eligible swimmers or meet days.</td></tr>';
   hide(declareStatus);
   show(declareControls);
+}
+
+function renderCoachEntryTable(detail) {
+  if (!detail.can_manage_entries) {
+    hide(coachEntryControls);
+    return;
+  }
+
+  const declaredYesSet = new Set(
+    (detail.declarations || [])
+      .filter((row) => String(row.status || "").toLowerCase() === "yes")
+      .map((row) => Number(row.swimmer_id)),
+  );
+
+  const selectedEvents = (detail.events || []).filter((event) => Number(event.is_selected) === 1);
+  const eligibilityBySwimmer = new Map(
+    (detail.eligibility || []).map((row) => [
+      Number(row.swimmer_id),
+      new Set((row.eligible_event_ids || []).map((id) => Number(id))),
+    ]),
+  );
+  const entrySet = new Set(
+    (detail.entries || []).map((row) => `${Number(row.swimmer_id)}|${Number(row.meet_event_id)}`),
+  );
+
+  const rows = [];
+  (detail.swimmers || []).forEach((swimmer) => {
+    const swimmerId = Number(swimmer.swimmer_id);
+    if (!declaredYesSet.has(swimmerId)) {
+      return;
+    }
+
+    const eligibleEvents = selectedEvents.filter((event) => {
+      const eligibleSet = eligibilityBySwimmer.get(swimmerId) || new Set();
+      return eligibleSet.has(Number(event.id));
+    });
+
+    const eventChecks = eligibleEvents.length
+      ? eligibleEvents
+          .map((event) => {
+            const checked = entrySet.has(`${swimmerId}|${Number(event.id)}`) ? "checked" : "";
+            return `<label class="checkbox-row" style="margin:0 0 0.35rem 0;"><input type="checkbox" data-entry-swimmer="${swimmerId}" data-entry-event="${event.id}" ${checked} /><span>${escHtml(event.event_name)}</span></label>`;
+          })
+          .join("")
+      : '<span class="muted-inline">No eligible selected events.</span>';
+
+    rows.push(`
+      <tr data-entry-swimmer-row="${swimmerId}">
+        <td>${escHtml(swimmer.swimmer_name)}</td>
+        <td>${eventChecks}</td>
+      </tr>
+    `);
+  });
+
+  coachEntryTbody.innerHTML = rows.join("") || '<tr><td colspan="2" class="muted-inline">No swimmers with "Yes" declarations yet.</td></tr>';
+  hide(coachEntryStatus);
+  show(coachEntryControls);
 }
 
 async function loadMeetDetail(meetId) {
@@ -366,6 +451,7 @@ async function loadMeetDetail(meetId) {
     renderMeetDays(detail.days || []);
     renderCoachEventSelection(detail);
     renderDeclarationTable(detail);
+    renderCoachEntryTable(detail);
 
     show(meetDetailCard);
   } catch (error) {
@@ -849,13 +935,18 @@ btnSaveDeclarations.addEventListener("click", async () => {
   statusEls.forEach((statusEl) => {
     const swimmerId = Number(statusEl.getAttribute("data-declare-status"));
     const day = String(statusEl.getAttribute("data-day") || "");
-    const noteEl = declareTbody.querySelector(
-      `input[data-declare-note=\"${swimmerId}\"][data-day=\"${day}\"]`,
+    const sessionLabel = String(statusEl.getAttribute("data-session-label") || "");
+    const noteEl = Array.from(declareTbody.querySelectorAll("input[data-declare-note][data-day][data-session-label]")).find(
+      (input) =>
+        Number(input.getAttribute("data-declare-note")) === swimmerId &&
+        String(input.getAttribute("data-day") || "") === day &&
+        String(input.getAttribute("data-session-label") || "") === sessionLabel,
     );
 
     declarations.push({
       swimmer_id: swimmerId,
       meet_day: day,
+      session_label: sessionLabel,
       status: statusEl.value,
       note: noteEl ? noteEl.value : "",
     });
@@ -888,6 +979,56 @@ btnSaveDeclarations.addEventListener("click", async () => {
 
 btnRefreshMeets.addEventListener("click", loadMeets);
 btnLogout.addEventListener("click", redirectToLogin);
+
+btnSaveCoachEntries.addEventListener("click", async () => {
+  if (!selectedMeetId || !selectedMeetDetail) return;
+
+  const bySwimmer = new Map();
+  const swimmerRows = Array.from(coachEntryTbody.querySelectorAll("tr[data-entry-swimmer-row]"));
+  swimmerRows.forEach((row) => {
+    const swimmerId = Number(row.getAttribute("data-entry-swimmer-row"));
+    if (Number.isInteger(swimmerId)) {
+      bySwimmer.set(swimmerId, []);
+    }
+  });
+
+  const checkboxes = Array.from(coachEntryTbody.querySelectorAll("input[data-entry-swimmer][data-entry-event]"));
+  checkboxes.forEach((input) => {
+    const swimmerId = Number(input.getAttribute("data-entry-swimmer"));
+    const eventId = Number(input.getAttribute("data-entry-event"));
+    if (!Number.isInteger(swimmerId) || !Number.isInteger(eventId)) return;
+    if (!bySwimmer.has(swimmerId)) bySwimmer.set(swimmerId, []);
+    if (input.checked) {
+      bySwimmer.get(swimmerId).push(eventId);
+    }
+  });
+
+  const entries = Array.from(bySwimmer.entries()).map(([swimmer_id, event_ids]) => ({
+    swimmer_id,
+    event_ids,
+  }));
+
+  btnSaveCoachEntries.disabled = true;
+  btnSaveCoachEntries.textContent = "Saving...";
+  try {
+    const res = await apiFetch(`/api/meets/${selectedMeetId}/entries`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ entries }),
+    });
+    const data = await safeJson(res);
+    if (!res.ok) {
+      throw new Error((data && data.message) || `Failed (${res.status})`);
+    }
+    showState(coachEntryStatus, "Event sign-ups saved.", "info");
+    await loadMeetDetail(selectedMeetId);
+  } catch (error) {
+    showState(coachEntryStatus, `Save failed: ${error.message}`, "error");
+  } finally {
+    btnSaveCoachEntries.disabled = false;
+    btnSaveCoachEntries.textContent = "Save Event Sign-ups";
+  }
+});
 
 async function init() {
   if (!getToken()) {
