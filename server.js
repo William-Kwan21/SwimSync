@@ -606,7 +606,109 @@ function parseTruthy(value) {
   return ["1", "true", "yes", "y", "selected"].includes(raw);
 }
 
-function parseMeetFileContent(content) {
+function cleanImportedFileName(fileName) {
+  return String(fileName || "")
+    .replace(/\.[a-z0-9]+$/i, "")
+    .replace(/\b(final|rev(?:ision)?\s*\d*|draft|copy)\b/gi, "")
+    .replace(/[\-_]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function detectMeetDateFromText(text) {
+  const months = "January|February|March|April|May|June|July|August|September|October|November|December|Jan|Feb|Mar|Apr|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec";
+  const monthDateYear = new RegExp(`\\b(?:${months})\\s+\\d{1,2}(?:\\s*[-,]\\s*\\d{1,2})?(?:,?\\s+\\d{4})?\\b`, "i");
+  const dayMonthYear = new RegExp(`\\b\\d{1,2}\\s+(?:${months})(?:\\s+\\d{4})?\\b`, "i");
+  const isoLike = /\b\d{4}-\d{2}-\d{2}\b/;
+
+  const match =
+    text.match(isoLike) ||
+    text.match(monthDateYear) ||
+    text.match(dayMonthYear);
+  if (!match) return null;
+  return normalizeDateOnly(match[0]);
+}
+
+function parseMeetEventsFromPlainText(content) {
+  const lines = String(content || "")
+    .replace(/\r\n/g, "\n")
+    .replace(/\r/g, "\n")
+    .split("\n")
+    .map((line) => line.replace(/\s+/g, " ").trim())
+    .filter(Boolean);
+
+  const events = [];
+  const seen = new Set();
+
+  const strokePatterns = [
+    { re: /\bindividual\s+medley\b|\bim\b/i, stroke: "individual medley" },
+    { re: /\bfreestyle\b|\bfree\b/i, stroke: "freestyle" },
+    { re: /\bbackstroke\b|\bback\b/i, stroke: "backstroke" },
+    { re: /\bbreaststroke\b|\bbreast\b/i, stroke: "breaststroke" },
+    { re: /\bbutterfly\b|\bfly\b/i, stroke: "butterfly" },
+    { re: /\brelay\b/i, stroke: "relay" },
+  ];
+
+  const eventLinePatterns = [
+    /^\s*event\s*#?\s*(\d{1,3})\s*[-:.]?\s*(.+)$/i,
+    /^\s*(\d{1,3})\s*[-:.]\s*(.+)$/i,
+  ];
+
+  lines.forEach((line) => {
+    let match = null;
+    for (const pattern of eventLinePatterns) {
+      match = line.match(pattern);
+      if (match) break;
+    }
+
+    if (!match) return;
+
+    const eventNumber = Number(match[1]);
+    const rawName = String(match[2] || "").trim();
+    if (!Number.isFinite(eventNumber) || !rawName) return;
+
+    const hasStrokeKeyword = strokePatterns.some((item) => item.re.test(rawName));
+    const hasDistanceKeyword = /\b\d{2,4}\s*(?:m|meter|meters|yd|yard|yards)\b/i.test(rawName);
+    if (!hasStrokeKeyword && !hasDistanceKeyword) return;
+
+    const dedupeKey = `${eventNumber}|${rawName.toLowerCase()}`;
+    if (seen.has(dedupeKey)) return;
+    seen.add(dedupeKey);
+
+    const distanceMatch = rawName.match(/\b(\d{2,4})\s*(?:m|meter|meters|yd|yard|yards)\b/i);
+    const distanceMeters = distanceMatch ? Number(distanceMatch[1]) : null;
+
+    let stroke = null;
+    for (const candidate of strokePatterns) {
+      if (candidate.re.test(rawName)) {
+        stroke = candidate.stroke;
+        break;
+      }
+    }
+
+    const ageMatch =
+      rawName.match(/\b(\d{1,2}\s*(?:-|to)\s*\d{1,2})\b/i) ||
+      rawName.match(/\b(\d{1,2}\s*(?:&|and)\s*under)\b/i) ||
+      rawName.match(/\b(open|senior|junior)\b/i);
+
+    const genderMatch = rawName.match(/\b(girls?|boys?|women|men|female|male|mixed|open|coed|co-ed)\b/i);
+
+    events.push({
+      event_name: `Event ${eventNumber} ${rawName}`,
+      stroke: stroke ? normalizeStroke(stroke) : null,
+      distance_meters: Number.isFinite(distanceMeters) ? distanceMeters : null,
+      age_group: ageMatch ? String(ageMatch[1]).trim() : null,
+      gender: genderMatch ? normalizeGender(genderMatch[1]) : null,
+      qualifying_time_seconds: null,
+      qualifying_time_text: null,
+      is_selected: events.length < 4,
+    });
+  });
+
+  return events;
+}
+
+function parseMeetFileContent(content, options = {}) {
   const text = String(content || "").trim();
   if (!text) {
     throw new Error("Meet file content is empty");
@@ -635,9 +737,34 @@ function parseMeetFileContent(content) {
   }
 
   if (!Array.isArray(payloadRows) || payloadRows.length === 0) {
-    throw new Error(
-      "No meet rows found. Provide JSON with events/rows or a CSV with at least one data row.",
-    );
+    const parsedEvents = parseMeetEventsFromPlainText(text);
+    if (!parsedEvents.length) {
+      throw new Error(
+        "No meet rows found. Provide JSON with events/rows, a CSV with data rows, or a meet packet that includes event-numbered lines.",
+      );
+    }
+
+    const fromFileName = cleanImportedFileName(options.file_name || "");
+    const firstLongLine = text
+      .split(/\r?\n/)
+      .map((line) => line.replace(/\s+/g, " ").trim())
+      .find((line) => line.length >= 8 && !/^event\b/i.test(line));
+
+    const meetName =
+      fromFileName ||
+      (firstLongLine ? firstLongLine.slice(0, 120) : "Imported Meet");
+
+    const detectedDate =
+      detectMeetDateFromText(text) || normalizeDateOnly(new Date().toISOString().slice(0, 10));
+
+    return {
+      meet_name: meetName,
+      meet_date: detectedDate,
+      location: null,
+      host_team: null,
+      days: [detectedDate],
+      events: parsedEvents,
+    };
   }
 
   const first = payloadRows[0];
@@ -2144,7 +2271,9 @@ app.post(
 
     let parsedMeet;
     try {
-      parsedMeet = parseMeetFileContent(content);
+      parsedMeet = parseMeetFileContent(content, {
+        file_name: payload && payload.file_name ? payload.file_name : "",
+      });
     } catch (error) {
       return res
         .status(400)

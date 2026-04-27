@@ -522,23 +522,10 @@ async function readSelectedFile(inputEl) {
   }
 
   const file = inputEl.files[0];
-  const isPdf =
-    String(file.type || "").toLowerCase() === "application/pdf" ||
-    String(file.name || "").toLowerCase().endsWith(".pdf");
-
-  if (isPdf) {
-      return {
-        file,
-        file_type: "pdf",
-        file_name: file.name,
-      };
-  }
-
   return {
-    content: await file.text(),
-    file_type: file.type || "text/plain",
+    file,
+    file_type: file.type || "application/octet-stream",
     file_name: file.name,
-    encoding: "utf8",
   };
 }
 
@@ -549,17 +536,13 @@ meetImportForm.addEventListener("submit", async (event) => {
 
   try {
     const filePayload = await readSelectedFile(meetImportFile);
-    const res = await apiFetch("/api/meets/import", filePayload.file ? {
+    const res = await apiFetch("/api/meets/import", {
       method: "POST",
       body: (() => {
         const formData = new FormData();
         formData.append("import_file", filePayload.file, filePayload.file_name || "meet.pdf");
         return formData;
       })(),
-    } : {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(filePayload),
     });
 
     const data = await safeJson(res);
@@ -597,7 +580,7 @@ timesImportForm.addEventListener("submit", async (event) => {
       filePayload.default_swimmer_id = selectedDefaultSwimmer;
     }
 
-    const res = await apiFetch("/api/swimmer-times/import", filePayload.file ? {
+    const res = await apiFetch("/api/swimmer-times/import", {
       method: "POST",
       body: (() => {
         const formData = new FormData();
@@ -607,10 +590,6 @@ timesImportForm.addEventListener("submit", async (event) => {
         }
         return formData;
       })(),
-    } : {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(filePayload),
     });
 
     const data = await safeJson(res);
