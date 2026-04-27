@@ -43,6 +43,14 @@ const meetDetailCard = document.getElementById("meet-detail-card");
 const meetDetailTitle = document.getElementById("meet-detail-title");
 const meetDetailMeta = document.getElementById("meet-detail-meta");
 const meetDays = document.getElementById("meet-days");
+const meetEditControls = document.getElementById("meet-edit-controls");
+const meetEditForm = document.getElementById("meet-edit-form");
+const meetEditName = document.getElementById("meet-edit-name");
+const meetEditDate = document.getElementById("meet-edit-date");
+const meetEditLocation = document.getElementById("meet-edit-location");
+const meetEditHostTeam = document.getElementById("meet-edit-host-team");
+const meetEditStatus = document.getElementById("meet-edit-status");
+const btnSaveMeetEdit = document.getElementById("btn-save-meet-edit");
 
 const coachEventControls = document.getElementById("coach-event-controls");
 const eventsTbody = document.getElementById("events-tbody");
@@ -226,13 +234,21 @@ if (meetCreateForm) {
 function renderMeetRow(meet) {
   const tr = document.createElement("tr");
   tr.dataset.meetId = String(meet.id);
+  const canDeleteMeet =
+    currentUser && (currentUser.role === "admin" || currentUser.role === "coach");
+  const actionButtons = canDeleteMeet
+    ? `<div style="display:flex; gap:0.45rem; flex-wrap:wrap;">
+         <button class="btn btn-secondary" data-open-meet="${meet.id}" type="button">Open</button>
+         <button class="btn btn-danger" data-delete-meet="${meet.id}" type="button">Delete</button>
+       </div>`
+    : `<button class="btn btn-secondary" data-open-meet="${meet.id}" type="button">Open</button>`;
   tr.innerHTML = `
     <td>${escHtml(meet.meet_name)}</td>
     <td>${formatDate(meet.meet_date)}</td>
     <td>${escHtml(meet.location || "-")}</td>
     <td>${Number(meet.event_count) || 0}</td>
     <td>${Number(meet.selected_event_count) || 0}</td>
-    <td><button class="btn btn-secondary" data-open-meet="${meet.id}" type="button">Open</button></td>
+    <td>${actionButtons}</td>
   `;
   return tr;
 }
@@ -281,6 +297,24 @@ function renderMeetDays(days) {
   meetDays.innerHTML = days
     .map((row) => `<span class="chip">${escHtml(formatDate(row.meet_day))}</span>`)
     .join("");
+}
+
+function renderMeetEditForm(detail) {
+  const canEditMeet = !!(detail && detail.can_select_events);
+  if (!canEditMeet) {
+    hide(meetEditControls);
+    return;
+  }
+
+  meetEditName.value = detail && detail.meet && detail.meet.meet_name ? detail.meet.meet_name : "";
+  meetEditDate.value =
+    detail && detail.meet && detail.meet.meet_date
+      ? String(detail.meet.meet_date).slice(0, 10)
+      : "";
+  meetEditLocation.value = detail && detail.meet && detail.meet.location ? detail.meet.location : "";
+  meetEditHostTeam.value = detail && detail.meet && detail.meet.host_team ? detail.meet.host_team : "";
+  hide(meetEditStatus);
+  show(meetEditControls);
 }
 
 function renderCoachEventSelection(detail) {
@@ -448,6 +482,7 @@ async function loadMeetDetail(meetId) {
 
     meetDetailTitle.textContent = detail.meet.meet_name;
     meetDetailMeta.textContent = `${formatDate(detail.meet.meet_date)} · ${detail.meet.location || "Location TBD"}`;
+    renderMeetEditForm(detail);
     renderMeetDays(detail.days || []);
     renderCoachEventSelection(detail);
     renderDeclarationTable(detail);
@@ -886,6 +921,44 @@ manualTimeForm.addEventListener("submit", async (event) => {
 });
 
 meetsTbody.addEventListener("click", async (event) => {
+  const deleteBtn = event.target.closest("button[data-delete-meet]");
+  if (deleteBtn) {
+    const meetId = Number(deleteBtn.dataset.deleteMeet);
+    if (Number.isNaN(meetId)) return;
+
+    const confirmed = window.confirm("Delete this meet and all its related data?");
+    if (!confirmed) return;
+
+    deleteBtn.disabled = true;
+    const originalText = deleteBtn.textContent;
+    deleteBtn.textContent = "Deleting...";
+    try {
+      const res = await apiFetch(`/api/meets/${meetId}`, {
+        method: "DELETE",
+      });
+      const data = await safeJson(res);
+      if (!res.ok) {
+        throw new Error((data && data.message) || `Failed (${res.status})`);
+      }
+
+      if (selectedMeetId === meetId) {
+        selectedMeetId = null;
+        selectedMeetDetail = null;
+        hide(meetDetailCard);
+      }
+
+      await loadMeets();
+      showState(meetsError, "Meet deleted.", "info");
+      return;
+    } catch (error) {
+      showState(meetsError, `Delete failed: ${error.message}`, "error");
+    } finally {
+      deleteBtn.disabled = false;
+      deleteBtn.textContent = originalText;
+    }
+    return;
+  }
+
   const btn = event.target.closest("button[data-open-meet]");
   if (!btn) return;
 
@@ -979,6 +1052,46 @@ btnSaveDeclarations.addEventListener("click", async () => {
 
 btnRefreshMeets.addEventListener("click", loadMeets);
 btnLogout.addEventListener("click", redirectToLogin);
+
+if (meetEditForm) {
+  meetEditForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    if (!selectedMeetId) return;
+
+    hide(meetEditStatus);
+    btnSaveMeetEdit.disabled = true;
+    btnSaveMeetEdit.textContent = "Saving...";
+
+    try {
+      const payload = {
+        meet_name: meetEditName.value.trim(),
+        meet_date: meetEditDate.value,
+        location: meetEditLocation.value.trim(),
+        host_team: meetEditHostTeam.value.trim(),
+      };
+
+      const res = await apiFetch(`/api/meets/${selectedMeetId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      const data = await safeJson(res);
+      if (!res.ok) {
+        throw new Error((data && data.message) || `Failed (${res.status})`);
+      }
+
+      showState(meetEditStatus, "Meet info updated.", "info");
+      await loadMeets();
+      await loadMeetDetail(selectedMeetId);
+    } catch (error) {
+      showState(meetEditStatus, `Update failed: ${error.message}`, "error");
+    } finally {
+      btnSaveMeetEdit.disabled = false;
+      btnSaveMeetEdit.textContent = "Save Meet Info";
+    }
+  });
+}
 
 btnSaveCoachEntries.addEventListener("click", async () => {
   if (!selectedMeetId || !selectedMeetDetail) return;

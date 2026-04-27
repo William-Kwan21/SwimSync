@@ -2831,6 +2831,86 @@ app.post(
   },
 );
 
+app.delete(
+  "/api/meets/:id",
+  authenticate,
+  requireRole("admin", "coach"),
+  async (req, res) => {
+    const meetId = Number(req.params.id);
+    if (!Number.isInteger(meetId) || meetId <= 0) {
+      return res.status(400).json({ message: "Invalid meet id" });
+    }
+
+    try {
+      const [result] = await pool.query("DELETE FROM meets WHERE id = ?", [meetId]);
+      if (result.affectedRows === 0) {
+        return res.status(404).json({ message: "Meet not found" });
+      }
+      return res.status(204).send();
+    } catch (error) {
+      return res.status(500).json({
+        message: "Failed to delete meet",
+        error: error.message,
+      });
+    }
+  },
+);
+
+app.put(
+  "/api/meets/:id",
+  authenticate,
+  requireRole("admin", "coach"),
+  async (req, res) => {
+    const meetId = Number(req.params.id);
+    if (!Number.isInteger(meetId) || meetId <= 0) {
+      return res.status(400).json({ message: "Invalid meet id" });
+    }
+
+    const meetName = String(req.body && req.body.meet_name ? req.body.meet_name : "").trim();
+    const meetDate = normalizeDateOnly(req.body && req.body.meet_date);
+    const location = String(req.body && req.body.location ? req.body.location : "").trim();
+    const hostTeam = String(req.body && req.body.host_team ? req.body.host_team : "").trim();
+
+    if (!meetName || !meetDate) {
+      return res.status(400).json({ message: "meet_name and meet_date are required" });
+    }
+
+    try {
+      const [result] = await pool.query(
+        `UPDATE meets
+         SET meet_name = ?,
+             meet_date = ?,
+             location = ?,
+             host_team = ?
+         WHERE id = ?`,
+        [meetName, meetDate, location || null, hostTeam || null, meetId],
+      );
+
+      if (result.affectedRows === 0) {
+        return res.status(404).json({ message: "Meet not found" });
+      }
+
+      const [rows] = await pool.query(
+        `SELECT id, meet_name, meet_date, location, host_team, created_at
+         FROM meets
+         WHERE id = ?
+         LIMIT 1`,
+        [meetId],
+      );
+
+      return res.json({
+        message: "Meet info updated",
+        meet: rows[0],
+      });
+    } catch (error) {
+      return res.status(500).json({
+        message: "Failed to update meet",
+        error: error.message,
+      });
+    }
+  },
+);
+
 app.get("/api/meets", authenticate, async (req, res) => {
   try {
     const [meetRows] = await pool.query(

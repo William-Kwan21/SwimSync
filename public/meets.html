@@ -170,6 +170,34 @@
             <span id="meet-detail-meta" class="muted-inline"></span>
           </div>
 
+          <div id="meet-edit-controls" class="hidden">
+            <div class="card-header">
+              <h2>Edit Meet Info</h2>
+            </div>
+            <form id="meet-edit-form" class="form-grid" autocomplete="off">
+              <div class="form-row">
+                <label for="meet-edit-name">Meet Name</label>
+                <input id="meet-edit-name" type="text" required />
+              </div>
+              <div class="form-row">
+                <label for="meet-edit-date">Meet Date</label>
+                <input id="meet-edit-date" type="date" required />
+              </div>
+              <div class="form-row">
+                <label for="meet-edit-location">Location</label>
+                <input id="meet-edit-location" type="text" />
+              </div>
+              <div class="form-row">
+                <label for="meet-edit-host-team">Host Team</label>
+                <input id="meet-edit-host-team" type="text" />
+              </div>
+              <div id="meet-edit-status" class="state-msg hidden form-row-full"></div>
+              <div class="form-row form-row-full">
+                <button class="btn btn-primary" id="btn-save-meet-edit" type="submit">Save Meet Info</button>
+              </div>
+            </form>
+          </div>
+
           <div id="meet-days" class="chip-list"></div>
 
           <div id="coach-event-controls" class="hidden">
