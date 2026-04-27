@@ -72,7 +72,7 @@
             </div>
             <form id="meet-import-form" class="form-grid" autocomplete="off">
               <div class="form-row form-row-full">
-                <label for="meet-import-file">Meet file (JSON or CSV)</label>
+                <label for="meet-import-file">Meet file (JSON, CSV, TXT, or PDF)</label>
                 <input id="meet-import-file" type="file" accept=".json,.csv,.txt,.pdf" required />
               </div>
               <div id="meet-import-status" class="state-msg hidden form-row-full"></div>
@@ -94,7 +94,7 @@
                 </select>
               </div>
               <div class="form-row form-row-full">
-                <label for="times-import-file">Times file (JSON or CSV)</label>
+                <label for="times-import-file">Times file (JSON, CSV, TXT, or PDF)</label>
                 <input id="times-import-file" type="file" accept=".json,.csv,.txt,.pdf" required />
               </div>
               <div id="times-import-status" class="state-msg hidden form-row-full"></div>
@@ -248,6 +248,7 @@
 
     <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
     <script src="https://cdn.jsdelivr.net/npm/tom-select/dist/js/tom-select.complete.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168/pdf.min.js"></script>
     <script src="ui-theme.js"></script>
     <script src="meets.js"></script>
   </body>

@@ -529,6 +529,69 @@ async function readSelectedFile(inputEl) {
   };
 }
 
+function isPdfFile(file) {
+  if (!file) return false;
+  return (
+    String(file.type || "").toLowerCase() === "application/pdf" ||
+    String(file.name || "").toLowerCase().endsWith(".pdf")
+  );
+}
+
+async function extractPdfTextInBrowser(file) {
+  if (typeof pdfjsLib === "undefined") {
+    throw new Error("PDF text extraction library is unavailable in this browser session.");
+  }
+
+  if (!pdfjsLib.GlobalWorkerOptions.workerSrc) {
+    pdfjsLib.GlobalWorkerOptions.workerSrc =
+      "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168/pdf.worker.min.js";
+  }
+
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  const doc = await pdfjsLib.getDocument({ data: bytes }).promise;
+  const chunks = [];
+
+  for (let pageNum = 1; pageNum <= doc.numPages; pageNum += 1) {
+    const page = await doc.getPage(pageNum);
+    const textContent = await page.getTextContent();
+    const pageText = (textContent.items || [])
+      .map((item) => (item && item.str ? String(item.str) : ""))
+      .join(" ")
+      .replace(/\s+/g, " ")
+      .trim();
+
+    if (pageText) {
+      chunks.push(pageText);
+    }
+  }
+
+  const text = chunks.join("\n").trim();
+  if (!text) {
+    throw new Error("The PDF appears to be image-only. Use a text-searchable PDF export.");
+  }
+  return text;
+}
+
+function uploadFileMultipart(url, filePayload, extraFields = {}) {
+  return apiFetch(url, {
+    method: "POST",
+    body: (() => {
+      const formData = new FormData();
+      formData.append("import_file", filePayload.file, filePayload.file_name || "import.pdf");
+      Object.entries(extraFields).forEach(([key, value]) => {
+        if (value != null && String(value).trim() !== "") {
+          formData.append(key, String(value));
+        }
+      });
+      return formData;
+    })(),
+  });
+}
+
+function build413Message(prefix) {
+  return `${prefix} failed (413). Upload was blocked before it reached the app. Retry with a smaller file or raise proxy upload limit (nginx client_max_body_size / Apache LimitRequestBody).`;
+}
+
 meetImportForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   btnImportMeet.disabled = true;
@@ -536,18 +599,37 @@ meetImportForm.addEventListener("submit", async (event) => {
 
   try {
     const filePayload = await readSelectedFile(meetImportFile);
-    const res = await apiFetch("/api/meets/import", {
-      method: "POST",
-      body: (() => {
-        const formData = new FormData();
-        formData.append("import_file", filePayload.file, filePayload.file_name || "meet.pdf");
-        return formData;
-      })(),
-    });
+    let res = await uploadFileMultipart("/api/meets/import", filePayload);
+    let data = await safeJson(res);
 
-    const data = await safeJson(res);
+    if (!res.ok && res.status === 413 && isPdfFile(filePayload.file)) {
+      showState(
+        meetImportStatus,
+        "Upload blocked by server limit. Retrying using extracted PDF text...",
+        "info",
+      );
+
+      const extractedText = await extractPdfTextInBrowser(filePayload.file);
+      res = await apiFetch("/api/meets/import", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          content: extractedText,
+          file_type: "text/plain",
+          file_name: "meet-import.txt",
+          encoding: "utf8",
+        }),
+      });
+      data = await safeJson(res);
+    }
+
     if (!res.ok) {
-      throw new Error((data && data.message) || `Import failed (${res.status})`);
+      throw new Error(
+        (data && data.message) ||
+          (res.status === 413
+            ? build413Message("Meet import")
+            : `Import failed (${res.status})`),
+      );
     }
 
     showState(meetImportStatus, `Meet imported: ${data.meet.meet_name}`, "info");
@@ -580,21 +662,21 @@ timesImportForm.addEventListener("submit", async (event) => {
       filePayload.default_swimmer_id = selectedDefaultSwimmer;
     }
 
-    const res = await apiFetch("/api/swimmer-times/import", {
-      method: "POST",
-      body: (() => {
-        const formData = new FormData();
-        formData.append("import_file", filePayload.file, filePayload.file_name || "times.pdf");
-        if (Number.isInteger(selectedDefaultSwimmer) && selectedDefaultSwimmer > 0) {
-          formData.append("default_swimmer_id", String(selectedDefaultSwimmer));
-        }
-        return formData;
-      })(),
+    const res = await uploadFileMultipart("/api/swimmer-times/import", filePayload, {
+      default_swimmer_id:
+        Number.isInteger(selectedDefaultSwimmer) && selectedDefaultSwimmer > 0
+          ? selectedDefaultSwimmer
+          : "",
     });
 
     const data = await safeJson(res);
     if (!res.ok) {
-      throw new Error((data && data.message) || `Import failed (${res.status})`);
+      throw new Error(
+        (data && data.message) ||
+          (res.status === 413
+            ? build413Message("Times import")
+            : `Import failed (${res.status})`),
+      );
     }
 
     const skipped = Array.isArray(data.skipped) ? data.skipped.length : 0;
