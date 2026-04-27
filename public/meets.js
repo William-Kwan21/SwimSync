@@ -537,14 +537,79 @@ function isPdfFile(file) {
   );
 }
 
+let pdfJsLoadPromise = null;
+
+function loadScriptTag(src) {
+  return new Promise((resolve, reject) => {
+    const existing = document.querySelector(`script[src="${src}"]`);
+    if (existing) {
+      if (existing.dataset.loaded === "1") {
+        resolve();
+        return;
+      }
+      existing.addEventListener("load", () => resolve(), { once: true });
+      existing.addEventListener("error", () => reject(new Error(`Failed to load ${src}`)), {
+        once: true,
+      });
+      return;
+    }
+
+    const script = document.createElement("script");
+    script.src = src;
+    script.async = true;
+    script.onload = () => {
+      script.dataset.loaded = "1";
+      resolve();
+    };
+    script.onerror = () => reject(new Error(`Failed to load ${src}`));
+    document.head.appendChild(script);
+  });
+}
+
+async function ensurePdfJsLib() {
+  if (typeof window !== "undefined" && window.pdfjsLib) {
+    return window.pdfjsLib;
+  }
+
+  if (!pdfJsLoadPromise) {
+    pdfJsLoadPromise = (async () => {
+      const candidates = [
+        "https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js",
+        "https://unpkg.com/pdfjs-dist@3.11.174/build/pdf.min.js",
+        "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js",
+      ];
+
+      let lastError = null;
+      for (const src of candidates) {
+        try {
+          await loadScriptTag(src);
+          if (typeof window !== "undefined" && window.pdfjsLib) {
+            return window.pdfjsLib;
+          }
+        } catch (error) {
+          lastError = error;
+        }
+      }
+
+      throw (
+        lastError || new Error("Unable to load PDF extraction library from CDN sources.")
+      );
+    })();
+  }
+
+  return pdfJsLoadPromise;
+}
+
 async function extractPdfTextInBrowser(file) {
-  if (typeof pdfjsLib === "undefined") {
+  const pdfjsLib = await ensurePdfJsLib();
+
+  if (!pdfjsLib || typeof pdfjsLib.getDocument !== "function") {
     throw new Error("PDF text extraction library is unavailable in this browser session.");
   }
 
   if (!pdfjsLib.GlobalWorkerOptions.workerSrc) {
     pdfjsLib.GlobalWorkerOptions.workerSrc =
-      "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168/pdf.worker.min.js";
+      "https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js";
   }
 
   const bytes = new Uint8Array(await file.arrayBuffer());
