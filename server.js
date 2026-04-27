@@ -652,7 +652,79 @@ function parseMeetEventsFromPlainText(content) {
   const eventLinePatterns = [
     /^\s*event\s*#?\s*(\d{1,3})\s*[-:.]?\s*(.+)$/i,
     /^\s*(\d{1,3})\s*[-:.]\s*(.+)$/i,
+    /^\s*(\d{1,3})\s+(.+)$/i,
   ];
+
+  function parseDistanceFromName(rawName) {
+    const withUnits = rawName.match(/\b(\d{2,4})\s*(?:m|meter|meters|yd|yard|yards)\b/i);
+    if (withUnits) {
+      const parsed = Number(withUnits[1]);
+      return Number.isFinite(parsed) ? parsed : null;
+    }
+
+    const noUnits = rawName.match(
+      /\b(25|50|100|200|400|500|800|1000|1500)\b\s*(?=(?:freestyle|free|backstroke|back|breaststroke|breast|butterfly|fly|individual\s+medley|im|relay)\b)/i,
+    );
+    if (noUnits) {
+      const parsed = Number(noUnits[1]);
+      return Number.isFinite(parsed) ? parsed : null;
+    }
+
+    return null;
+  }
+
+  function pushEvent(eventNumber, rawName) {
+    const cleanName = String(rawName || "")
+      .replace(/^event\s*#?\s*\d{1,3}\s*[-:.]?\s*/i, "")
+      .replace(/\s+/g, " ")
+      .trim();
+
+    if (!Number.isFinite(eventNumber) || eventNumber <= 0 || !cleanName) {
+      return;
+    }
+
+    const hasStrokeKeyword = strokePatterns.some((item) => item.re.test(cleanName));
+    const hasDistanceKeyword =
+      /\b\d{2,4}\s*(?:m|meter|meters|yd|yard|yards)\b/i.test(cleanName) ||
+      /\b(25|50|100|200|400|500|800|1000|1500)\b/i.test(cleanName);
+    if (!hasStrokeKeyword && !hasDistanceKeyword) {
+      return;
+    }
+
+    const dedupeKey = `${eventNumber}|${cleanName.toLowerCase()}`;
+    if (seen.has(dedupeKey)) {
+      return;
+    }
+    seen.add(dedupeKey);
+
+    const distanceMeters = parseDistanceFromName(cleanName);
+
+    let stroke = null;
+    for (const candidate of strokePatterns) {
+      if (candidate.re.test(cleanName)) {
+        stroke = candidate.stroke;
+        break;
+      }
+    }
+
+    const ageMatch =
+      cleanName.match(/\b(\d{1,2}\s*(?:-|to)\s*\d{1,2})\b/i) ||
+      cleanName.match(/\b(\d{1,2}\s*(?:&|and)\s*under)\b/i) ||
+      cleanName.match(/\b(open|senior|junior)\b/i);
+
+    const genderMatch = cleanName.match(/\b(girls?|boys?|women|men|female|male|mixed|open|coed|co-ed)\b/i);
+
+    events.push({
+      event_name: `Event ${eventNumber} ${cleanName}`,
+      stroke: stroke ? normalizeStroke(stroke) : null,
+      distance_meters: Number.isFinite(distanceMeters) ? distanceMeters : null,
+      age_group: ageMatch ? String(ageMatch[1]).trim() : null,
+      gender: genderMatch ? normalizeGender(genderMatch[1]) : null,
+      qualifying_time_seconds: null,
+      qualifying_time_text: null,
+      is_selected: events.length < 4,
+    });
+  }
 
   lines.forEach((line) => {
     let match = null;
@@ -665,45 +737,34 @@ function parseMeetEventsFromPlainText(content) {
 
     const eventNumber = Number(match[1]);
     const rawName = String(match[2] || "").trim();
-    if (!Number.isFinite(eventNumber) || !rawName) return;
-
-    const hasStrokeKeyword = strokePatterns.some((item) => item.re.test(rawName));
-    const hasDistanceKeyword = /\b\d{2,4}\s*(?:m|meter|meters|yd|yard|yards)\b/i.test(rawName);
-    if (!hasStrokeKeyword && !hasDistanceKeyword) return;
-
-    const dedupeKey = `${eventNumber}|${rawName.toLowerCase()}`;
-    if (seen.has(dedupeKey)) return;
-    seen.add(dedupeKey);
-
-    const distanceMatch = rawName.match(/\b(\d{2,4})\s*(?:m|meter|meters|yd|yard|yards)\b/i);
-    const distanceMeters = distanceMatch ? Number(distanceMatch[1]) : null;
-
-    let stroke = null;
-    for (const candidate of strokePatterns) {
-      if (candidate.re.test(rawName)) {
-        stroke = candidate.stroke;
-        break;
-      }
-    }
-
-    const ageMatch =
-      rawName.match(/\b(\d{1,2}\s*(?:-|to)\s*\d{1,2})\b/i) ||
-      rawName.match(/\b(\d{1,2}\s*(?:&|and)\s*under)\b/i) ||
-      rawName.match(/\b(open|senior|junior)\b/i);
-
-    const genderMatch = rawName.match(/\b(girls?|boys?|women|men|female|male|mixed|open|coed|co-ed)\b/i);
-
-    events.push({
-      event_name: `Event ${eventNumber} ${rawName}`,
-      stroke: stroke ? normalizeStroke(stroke) : null,
-      distance_meters: Number.isFinite(distanceMeters) ? distanceMeters : null,
-      age_group: ageMatch ? String(ageMatch[1]).trim() : null,
-      gender: genderMatch ? normalizeGender(genderMatch[1]) : null,
-      qualifying_time_seconds: null,
-      qualifying_time_text: null,
-      is_selected: events.length < 4,
-    });
+    pushEvent(eventNumber, rawName);
   });
+
+  // Fallback for PDFs where event numbers and names are split across chunks.
+  const compact = lines.join(" ");
+  const markers = [];
+  const markerRegex = /\b(?:event\s*#?\s*)?(\d{1,3})\b/gi;
+  let markerMatch;
+  while ((markerMatch = markerRegex.exec(compact)) !== null) {
+    const n = Number(markerMatch[1]);
+    if (!Number.isFinite(n) || n <= 0) {
+      continue;
+    }
+    markers.push({ number: n, start: markerMatch.index, end: markerRegex.lastIndex });
+  }
+
+  for (let i = 0; i < markers.length; i += 1) {
+    const current = markers[i];
+    const nextStart = i + 1 < markers.length ? markers[i + 1].start : compact.length;
+    const snippet = compact
+      .slice(current.end, Math.min(nextStart, current.end + 220))
+      .replace(/\s+/g, " ")
+      .trim();
+    if (!snippet) {
+      continue;
+    }
+    pushEvent(current.number, snippet);
+  }
 
   return events;
 }
@@ -2300,9 +2361,15 @@ app.post(
         file_name: payload && payload.file_name ? payload.file_name : "",
       });
     } catch (error) {
+      const contentLength = String(content || "").trim().length;
       return res
         .status(400)
-        .json({ message: `Invalid meet file: ${error.message}` });
+        .json({
+          message: `Invalid meet file: ${error.message}`,
+          details: {
+            extracted_text_length: contentLength,
+          },
+        });
     }
 
     const connection = await pool.getConnection();
