@@ -830,7 +830,32 @@ function parseMeetFileContent(content, options = {}) {
   });
 
   if (!events.length) {
-    throw new Error("No valid events were found in the meet file");
+    const parsedEvents = parseMeetEventsFromPlainText(text);
+    if (!parsedEvents.length) {
+      throw new Error("No valid events were found in the meet file");
+    }
+
+    const fromFileName = cleanImportedFileName(options.file_name || "");
+    const firstLongLine = text
+      .split(/\r?\n/)
+      .map((line) => line.replace(/\s+/g, " ").trim())
+      .find((line) => line.length >= 8 && !/^event\b/i.test(line));
+
+    const meetName =
+      fromFileName ||
+      (firstLongLine ? firstLongLine.slice(0, 120) : "Imported Meet");
+
+    const detectedDate =
+      detectMeetDateFromText(text) || normalizeDateOnly(new Date().toISOString().slice(0, 10));
+
+    return {
+      meet_name: meetName,
+      meet_date: detectedDate,
+      location: location || null,
+      host_team: hostTeam || null,
+      days: [detectedDate],
+      events: parsedEvents,
+    };
   }
 
   if (!daySet.size) {
