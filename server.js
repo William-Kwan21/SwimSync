@@ -3012,9 +3012,10 @@ app.post(
       });
     } catch (error) {
       await connection.rollback();
+      const errorText = String(error && error.message ? error.message : "Unknown import error").trim();
       return res
         .status(500)
-        .json({ message: "Failed to import meet", error: error.message });
+        .json({ message: `Failed to import meet: ${errorText}`, error: errorText });
     } finally {
       connection.release();
     }

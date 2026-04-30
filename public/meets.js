@@ -939,9 +939,19 @@ meetImportForm.addEventListener("submit", async (event) => {
 
     if (!res.ok) {
       const serverMessage = data && data.message ? String(data.message) : "";
+      const serverError = data && data.error ? String(data.error) : "";
+      const detailText =
+        data && data.details && typeof data.details === "object"
+          ? Object.entries(data.details)
+              .map(([key, value]) => `${key}: ${value}`)
+              .join(", ")
+          : "";
       const statusDetails = `HTTP ${res.status}${res.statusText ? ` ${res.statusText}` : ""}`;
+      const combinedServerText = [serverMessage, serverError, detailText]
+        .filter((part) => part && String(part).trim())
+        .join(" | ");
       throw new Error(
-        serverMessage ||
+        combinedServerText ||
           (res.status === 413
             ? build413Message("Meet import")
             : `Import failed during ${stage}: ${statusDetails}`),
