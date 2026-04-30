@@ -139,6 +139,20 @@ async function safeJson(res) {
   }
 }
 
+async function readResponseMessage(res) {
+  const text = await res.text();
+  if (!text || !text.trim()) {
+    return "";
+  }
+
+  try {
+    const data = JSON.parse(text);
+    return String(data && (data.message || data.error || data.details) ? data.message || data.error || data.details : "").trim();
+  } catch {
+    return text.replace(/\s+/g, " ").trim().slice(0, 240);
+  }
+}
+
 async function apiFetch(url, options = {}) {
   const token = getToken();
   const headers = {
@@ -892,6 +906,8 @@ meetImportForm.addEventListener("submit", async (event) => {
 
   try {
     const filePayload = await readSelectedFile(meetImportFile);
+    showState(meetImportStatus, "Uploading PDF...", "info");
+
     let res = await uploadFileMultipart("/api/meets/import", filePayload);
     let data = await safeJson(res);
 
@@ -899,27 +915,40 @@ meetImportForm.addEventListener("submit", async (event) => {
       showState(
         meetImportStatus,
         res.status === 413
-          ? "Upload blocked by server limit. Retrying using extracted PDF text..."
-          : "Server could not parse the PDF. Retrying using extracted PDF text...",
+          ? "Upload blocked by server limit. Extracting PDF text and retrying..."
+          : "Server could not parse the PDF. Extracting PDF text and retrying...",
         "info",
       );
 
-      const extractedText = await extractPdfTextInBrowser(filePayload.file);
-      res = await uploadTextMultipart("/api/meets/import", {
-        content: extractedText,
-        file_type: "text/plain",
-        file_name: "meet-import.txt",
-        encoding: "utf8",
-      });
+      let extractedText;
+      try {
+        extractedText = await extractPdfTextInBrowser(filePayload.file);
+      } catch (error) {
+        throw new Error(`PDF extraction failed: ${error.message}`);
+      }
+
+      showState(meetImportStatus, "Retrying import with extracted PDF text...", "info");
+
+      try {
+        res = await uploadTextMultipart("/api/meets/import", {
+          content: extractedText,
+          file_type: "text/plain",
+          file_name: "meet-import.txt",
+          encoding: "utf8",
+        });
+      } catch (error) {
+        throw new Error(`Retry upload failed: ${error.message}`);
+      }
+
       data = await safeJson(res);
     }
 
     if (!res.ok) {
+      const responseMessage = await readResponseMessage(res.clone());
       throw new Error(
-        (data && data.message) ||
-          (res.status === 413
-            ? build413Message("Meet import")
-            : `Import failed (${res.status})`),
+        responseMessage ||
+          (data && data.message) ||
+          (res.status === 413 ? build413Message("Meet import") : `Import failed (${res.status})`),
       );
     }
 
@@ -941,6 +970,8 @@ timesImportForm.addEventListener("submit", async (event) => {
 
   try {
     const filePayload = await readSelectedFile(timesImportFile);
+    showState(timesImportStatus, "Uploading times file...", "info");
+
     const selectedDefaultSwimmer = Number(
       timesImportSwimmer && timesImportSwimmer.tomselect
         ? timesImportSwimmer.tomselect.getValue()
@@ -964,9 +995,7 @@ timesImportForm.addEventListener("submit", async (event) => {
     if (!res.ok) {
       throw new Error(
         (data && data.message) ||
-          (res.status === 413
-            ? build413Message("Times import")
-            : `Import failed (${res.status})`),
+          (res.status === 413 ? build413Message("Times import") : `Import failed (${res.status})`),
       );
     }
 
