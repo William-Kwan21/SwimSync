@@ -944,10 +944,8 @@ meetImportForm.addEventListener("submit", async (event) => {
     }
 
     if (!res.ok) {
-      const responseMessage = await readResponseMessage(res.clone());
       throw new Error(
-        responseMessage ||
-          (data && data.message) ||
+        (data && data.message) ||
           (res.status === 413 ? build413Message("Meet import") : `Import failed (${res.status})`),
       );
     }
