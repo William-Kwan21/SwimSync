@@ -939,6 +939,8 @@ function normalizeInviteSessionPeriod(value) {
     .toUpperCase();
   if (raw.startsWith("MID")) return "MID";
   if (raw === "AM" || raw === "PM") return raw;
+  if (raw === "MORNING") return "AM";
+  if (raw === "AFTERNOON") return "PM";
   return String(value || "")
     .replace(/\s+/g, " ")
     .trim()
@@ -979,72 +981,63 @@ function getDayOffsetFromDate(dateOnly, dayName) {
   return (target - date.getDay() + 7) % 7;
 }
 
-function parseInviteSessionEventsFromText(content, options = {}) {
-  const lines = String(content || "")
+function splitInviteSessionBlocks(content) {
+  const text = String(content || "")
     .replace(/\r\n/g, "\n")
     .replace(/\r/g, "\n")
-    .split("\n")
-    .map((line) => line.replace(/\s+/g, " ").trim())
-    .filter(Boolean);
+    .replace(/[ \t]+/g, " ");
 
-  const meetDate =
-    normalizeDateOnly(options.meet_date) || detectMeetDateFromText(content, options);
-  const sessionHeadingRegex = /\b(Friday|Saturday|Sunday)\s+(AM|PM|MID(?:-DAY)?|MID)\s+Session\b/i;
-  const blocks = [];
-  let currentBlock = null;
+  const headingRegex = /\b(Friday|Saturday|Sunday)\s+(?:AM|PM|MID(?:-?DAY)?|AFTERNOON|MORNING)\s+Session\b/gi;
+  const matches = [];
+  let match;
 
-  const flushBlock = () => {
-    if (currentBlock) {
-      blocks.push(currentBlock);
-      currentBlock = null;
-    }
-  };
-
-  lines.forEach((line) => {
-    const headingMatch = line.match(sessionHeadingRegex);
-    if (headingMatch) {
-      flushBlock();
-      currentBlock = {
-        dayName: headingMatch[1],
-        sessionLabel: normalizeInviteSessionPeriod(headingMatch[2]),
-        text: line.slice((headingMatch.index || 0) + headingMatch[0].length).trim(),
-      };
-      return;
-    }
-
-    if (!currentBlock) {
-      return;
-    }
-
-    currentBlock.text = `${currentBlock.text} ${line}`.trim();
-  });
-
-  flushBlock();
-
-  if (!blocks.length) {
-    return { days: [], events: [] };
+  while ((match = headingRegex.exec(text))) {
+    const headingText = match[0];
+    const labelMatch = headingText.match(/\b(AM|PM|MID(?:-?DAY)?|AFTERNOON|MORNING)\b/i);
+    matches.push({
+      index: match.index,
+      dayName: match[1],
+      length: headingText.length,
+      sessionLabel: normalizeInviteSessionPeriod(labelMatch ? labelMatch[1] : ""),
+    });
   }
 
-  const days = [];
+  if (!matches.length) {
+    return [];
+  }
+
+  return matches.map((current, index) => {
+    const next = matches[index + 1];
+    return {
+      dayName: current.dayName,
+      sessionLabel: current.sessionLabel,
+      text: text.slice(current.index + current.length, next ? next.index : text.length).trim(),
+    };
+  });
+}
+
+function parseInviteEventRowsFromBlock(blockText) {
+  const normalized = String(blockText || "")
+    .replace(/\bGirls\s+Event\s+Boys\b/gi, " ")
+    .replace(/\bGirls\s+Event\b|\bBoys\b/gi, " ")
+    .replace(/\bwarm[- ]?up:.*$/gi, " ")
+    .replace(/\bstart:.*$/gi, " ")
+    .replace(/\b15\s*minute\s*break\b/gi, " ")
+    .replace(/\*+/g, " ")
+    .replace(/[\u2022•·]/g, " ")
+    .replace(/[–—]/g, "-")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  const tokens = normalized.split(" ").filter(Boolean);
+  const distanceSet = new Set(["25", "50", "100", "200", "400", "500", "800", "1000", "1500"]);
+  const isStandaloneNumber = (token) => /^\d{1,3}$/.test(token);
   const events = [];
   const seen = new Set();
-  const blockStrokePatterns = [
-    { re: /\bindividual\s+medley\b|\bim\b/i, stroke: "individual medley" },
-    { re: /\bfreestyle\b|\bfree\b/i, stroke: "freestyle" },
-    { re: /\bbackstroke\b|\bback\b/i, stroke: "backstroke" },
-    { re: /\bbreaststroke\b|\bbreast\b/i, stroke: "breaststroke" },
-    { re: /\bbutterfly\b|\bfly\b/i, stroke: "butterfly" },
-    { re: /\brelay\b/i, stroke: "relay" },
-  ];
 
   const pushEvent = (eventNumber, descriptor, gender) => {
     const cleanDescriptor = String(descriptor || "")
-      .replace(/\bGirls\s+Event\s+Boys\b/gi, " ")
-      .replace(/\bGirls\s+Event\b|\bBoys\b/gi, " ")
-      .replace(/\bwarm[- ]?up:.*$/i, " ")
-      .replace(/\bstart:.*$/i, " ")
-      .replace(/\b15\s*minute\s*break\b/i, " ")
-      .replace(/\*+/g, " ")
+      .replace(/^event\s*#?\s*\d{1,3}\s*[-:.]?\s*/i, "")
       .replace(/\s+/g, " ")
       .trim();
 
@@ -1069,11 +1062,18 @@ function parseInviteSessionEventsFromText(content, options = {}) {
         : null;
 
     let stroke = null;
-    for (const candidate of blockStrokePatterns) {
-      if (candidate.re.test(cleanDescriptor)) {
-        stroke = candidate.stroke;
-        break;
-      }
+    if (/\bindividual\s+medley\b|\bim\b/i.test(cleanDescriptor)) {
+      stroke = "individual medley";
+    } else if (/\bfreestyle\b|\bfree\b/i.test(cleanDescriptor)) {
+      stroke = "freestyle";
+    } else if (/\bbackstroke\b|\bback\b/i.test(cleanDescriptor)) {
+      stroke = "backstroke";
+    } else if (/\bbreaststroke\b|\bbreast\b/i.test(cleanDescriptor)) {
+      stroke = "breaststroke";
+    } else if (/\bbutterfly\b|\bfly\b/i.test(cleanDescriptor)) {
+      stroke = "butterfly";
+    } else if (/\brelay\b/i.test(cleanDescriptor)) {
+      stroke = "relay";
     }
 
     events.push({
@@ -1087,6 +1087,49 @@ function parseInviteSessionEventsFromText(content, options = {}) {
       is_selected: events.length < 4,
     });
   };
+
+  let index = 0;
+  while (index < tokens.length) {
+    if (!isStandaloneNumber(tokens[index])) {
+      index += 1;
+      continue;
+    }
+
+    const oddNumber = Number(tokens[index]);
+    const nextNumberIndex = tokens.slice(index + 1).findIndex((token) => isStandaloneNumber(token));
+    if (nextNumberIndex < 0) {
+      break;
+    }
+
+    const evenNumber = Number(tokens[index + nextNumberIndex + 1]);
+    const middleTokens = tokens.slice(index + 1, index + nextNumberIndex + 1);
+    const descriptor = middleTokens.join(" ").trim();
+
+    if (oddNumber % 2 === 1) {
+      pushEvent(oddNumber, descriptor, "female");
+      pushEvent(evenNumber, descriptor, "male");
+    } else {
+      pushEvent(evenNumber, descriptor, "male");
+      pushEvent(oddNumber, descriptor, "female");
+    }
+
+    index += nextNumberIndex + 2;
+  }
+
+  return events;
+}
+
+function parseInviteSessionEventsFromText(content, options = {}) {
+  const blocks = splitInviteSessionBlocks(content);
+  const meetDate =
+    normalizeDateOnly(options.meet_date) || detectMeetDateFromText(content, options);
+
+  if (!blocks.length) {
+    return { days: [], events: [] };
+  }
+
+  const days = [];
+  const events = [];
 
   blocks.forEach((block) => {
     const sessionDate = meetDate
@@ -1102,64 +1145,7 @@ function parseInviteSessionEventsFromText(content, options = {}) {
       });
     }
 
-    let tableText = block.text;
-    const tableStart = tableText.search(/\bGirls\s+Event\s+Boys\b/i);
-    if (tableStart >= 0) {
-      tableText = tableText.slice(tableStart);
-    }
-
-    tableText = tableText
-      .replace(/\bGirls\s+Event\s+Boys\b/i, " ")
-      .replace(/\b15\s*minute\s*break\b/i, " ")
-      .replace(/\*+/g, " ")
-      .replace(/\s+/g, " ")
-      .trim();
-
-    const tokens = tableText.split(" ").filter(Boolean);
-    const distanceSet = new Set(["25", "50", "100", "200", "400", "500", "800", "1000", "1500"]);
-    const isStandaloneNumber = (token) => /^\d{1,3}$/.test(token);
-
-    let index = 0;
-    while (index < tokens.length) {
-      const token = tokens[index];
-      if (!isStandaloneNumber(token)) {
-        index += 1;
-        continue;
-      }
-
-      const oddNumber = Number(token);
-      index += 1;
-
-      const ageTokens = [];
-      while (index < tokens.length && !distanceSet.has(tokens[index])) {
-        ageTokens.push(tokens[index]);
-        index += 1;
-      }
-
-      if (index >= tokens.length) {
-        break;
-      }
-
-      const distanceToken = tokens[index];
-      index += 1;
-
-      const strokeTokens = [];
-      while (index < tokens.length && !isStandaloneNumber(tokens[index])) {
-        strokeTokens.push(tokens[index]);
-        index += 1;
-      }
-
-      if (index >= tokens.length) {
-        break;
-      }
-
-      const evenNumber = Number(tokens[index]);
-      index += 1;
-
-      const descriptor = [...ageTokens, distanceToken, ...strokeTokens].join(" ").trim();
-      pushEvent(oddNumber, descriptor, "female");
-      pushEvent(evenNumber, descriptor, "male");
-    }
+    events.push(...parseInviteEventRowsFromBlock(block.text));
   });
 
   return { days, events };

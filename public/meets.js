@@ -847,6 +847,29 @@ function build413Message(prefix) {
   return `${prefix} failed (413). Upload was blocked before it reached the app. Retry with a smaller file or raise proxy upload limit (nginx client_max_body_size / Apache LimitRequestBody).`;
 }
 
+function shouldRetryPdfImport(response, responseData, filePayload) {
+  if (!response || response.ok || !filePayload || !isPdfFile(filePayload.file)) {
+    return false;
+  }
+
+  if (response.status === 413) {
+    return true;
+  }
+
+  const message = String(responseData && responseData.message ? responseData.message : "")
+    .toLowerCase()
+    .trim();
+
+  return (
+    message.includes("invalid meet file") ||
+    message.includes("no valid events") ||
+    message.includes("unable to read text from pdf") ||
+    message.includes("pdf support requires pdf-parse") ||
+    message.includes("meet file content is empty") ||
+    message.includes("content is required")
+  );
+}
+
 meetImportForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   btnImportMeet.disabled = true;
@@ -857,10 +880,12 @@ meetImportForm.addEventListener("submit", async (event) => {
     let res = await uploadFileMultipart("/api/meets/import", filePayload);
     let data = await safeJson(res);
 
-    if (!res.ok && res.status === 413 && isPdfFile(filePayload.file)) {
+    if (shouldRetryPdfImport(res, data, filePayload)) {
       showState(
         meetImportStatus,
-        "Upload blocked by server limit. Retrying using extracted PDF text...",
+        res.status === 413
+          ? "Upload blocked by server limit. Retrying using extracted PDF text..."
+          : "Server could not parse the PDF. Retrying using extracted PDF text...",
         "info",
       );
 

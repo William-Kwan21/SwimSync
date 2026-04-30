@@ -1245,6 +1245,27 @@ body[data-theme="dark"] .auth-brand h1 {
   color: #f3f8fd;
 }
 
+body[data-theme="dark"] .auth-card {
+  background: linear-gradient(170deg, rgba(10, 18, 28, 0.95) 0%, rgba(14, 25, 38, 0.92) 100%);
+}
+
+body[data-theme="dark"] .demo-accounts {
+  background: linear-gradient(180deg, rgba(18, 28, 42, 0.96), rgba(13, 21, 32, 0.96));
+  border-color: rgba(148, 177, 204, 0.16);
+}
+
+body[data-theme="dark"] .demo-accounts h2 {
+  color: #f3f8fd;
+}
+
+body[data-theme="dark"] .demo-accounts li {
+  color: rgba(226, 237, 247, 0.86);
+}
+
+body[data-theme="dark"] .demo-accounts strong {
+  color: #ffffff;
+}
+
 body[data-theme="dark"] label,
 body[data-theme="dark"] .summary-value,
 body[data-theme="dark"] .eyebrow,
@@ -1283,9 +1304,9 @@ body[data-theme="dark"] .sidebar-link.active {
 body[data-theme="dark"] .btn-secondary,
 body[data-theme="dark"] .theme-mode-toggle,
 body[data-theme="dark"] .theme-accent-select {
-  color: #eef5fb;
-  background: rgba(255, 255, 255, 0.06);
-  border-color: rgba(255, 255, 255, 0.16);
+  color: #f6fbff;
+  background: rgba(16, 24, 36, 0.96);
+  border-color: rgba(255, 255, 255, 0.2);
 }
 
 body[data-theme="dark"] .btn-secondary:hover,
@@ -1305,6 +1326,108 @@ body[data-theme="dark"] .btn-primary {
 
 body[data-theme="dark"] .btn-primary:hover {
   background: linear-gradient(120deg, #165d85, var(--theme-accent));
+}
+
+body[data-theme="dark"] .ts-wrapper .ts-control,
+body[data-theme="dark"] select[data-no-theme="true"],
+body[data-theme="dark"] select[data-no-theme="true"]:focus {
+  color: #f6fbff;
+  background: rgba(16, 24, 36, 0.96);
+  border-color: rgba(255, 255, 255, 0.2);
+  box-shadow: none;
+}
+
+body[data-theme="dark"] select,
+body[data-theme="dark"] select option,
+body[data-theme="dark"] .theme-accent-select option,
+body[data-theme="dark"] select[data-no-theme="true"] option {
+  color: #f6fbff;
+  background-color: #101824;
+}
+
+body[data-theme="dark"] .ts-wrapper .ts-control input::placeholder,
+body[data-theme="dark"] .ts-wrapper .ts-control .item,
+body[data-theme="dark"] .ts-wrapper.single .ts-control .item,
+body[data-theme="dark"] .ts-wrapper .ts-control .ts-placeholder {
+  color: #f6fbff;
+}
+
+body[data-theme="dark"] .ts-wrapper.focus .ts-control {
+  border-color: var(--theme-accent);
+  box-shadow: 0 0 0 3px rgba(26, 117, 170, 0.22);
+}
+
+body[data-theme="dark"] .ts-wrapper .ts-control input {
+  color: #f6fbff;
+}
+
+body[data-theme="dark"] .ts-wrapper .ts-control input::placeholder {
+  color: rgba(226, 237, 247, 0.62);
+}
+
+body[data-theme="dark"] .ts-dropdown .option,
+body[data-theme="dark"] .ts-dropdown .optgroup-header,
+body[data-theme="dark"] .ts-dropdown .no-results {
+  color: #f6fbff;
+}
+
+body[data-theme="dark"] .ts-dropdown .option.active {
+  background: rgba(26, 117, 170, 0.26);
+  color: #fff;
+}
+
+body[data-theme="dark"] .calendar-picker,
+body[data-theme="dark"] .day-picker-dropdown,
+body[data-theme="dark"] .repeat-options {
+  border-color: rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+body[data-theme="dark"] .calendar-month-label,
+body[data-theme="dark"] .calendar-weekdays span,
+body[data-theme="dark"] .day-picker-list label {
+  color: rgba(226, 237, 247, 0.78);
+}
+
+body[data-theme="dark"] .calendar-day {
+  color: #eef6fb;
+  border-color: rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+body[data-theme="dark"] .calendar-day:hover {
+  border-color: rgba(255, 255, 255, 0.22);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+body[data-theme="dark"] .calendar-day.is-empty {
+  background: transparent;
+  border-color: transparent;
+}
+
+body[data-theme="dark"] .calendar-day.is-today {
+  border-color: var(--theme-accent);
+}
+
+body[data-theme="dark"] .calendar-day.is-selected {
+  color: #fff;
+  border-color: var(--theme-accent);
+  background: linear-gradient(120deg, var(--theme-accent), #165d85);
+}
+
+body[data-theme="dark"] .day-checkbox {
+  color: rgba(226, 237, 247, 0.8);
+  border-color: rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+body[data-theme="dark"] .day-checkbox:has(input:checked) {
+  background: linear-gradient(120deg, var(--theme-accent), #165d85);
+  border-color: var(--theme-accent);
+}
+
+body[data-theme="dark"] .day-checkbox input[type="checkbox"]:checked + span {
+  color: #fff;
 }
 
 body[data-theme="dark"] .card,
