@@ -206,57 +206,74 @@ function calculateAgeOnDate(dateOfBirth, onDate) {
 }
 
 function parseAgeGroupRange(ageGroupText) {
+  const ranges = parseAgeGroupRanges(ageGroupText);
+  return ranges.length ? ranges[0] : null;
+}
+
+function parseAgeGroupRanges(ageGroupText) {
   const raw = String(ageGroupText || "")
     .toLowerCase()
     .replace(/\s+/g, " ")
     .trim();
   if (!raw || raw === "open" || raw === "mixed") {
-    return null;
+    return [];
   }
 
-  let match = raw.match(/(\d{1,2})\s*(?:-|to|\/)\s*(\d{1,2})/i);
-  if (match) {
-    const min = Number(match[1]);
-    const max = Number(match[2]);
-    if (Number.isFinite(min) && Number.isFinite(max)) {
-      return { min: Math.min(min, max), max: Math.max(min, max) };
+  const ranges = [];
+  const seen = new Set();
+  const addRange = (minValue, maxValue) => {
+    const min = Number(minValue);
+    const max = Number(maxValue);
+    if (!Number.isFinite(min) || !Number.isFinite(max)) {
+      return;
     }
+
+    const normalized = {
+      min: Math.min(min, max),
+      max: Math.max(min, max),
+    };
+    const key = `${normalized.min}-${normalized.max}`;
+    if (seen.has(key)) {
+      return;
+    }
+    seen.add(key);
+    ranges.push(normalized);
+  };
+
+  const rangeRegex = /(\d{1,2})\s*(?:-|to|\/)\s*(\d{1,2})/gi;
+  let match;
+  while ((match = rangeRegex.exec(raw)) !== null) {
+    addRange(match[1], match[2]);
   }
 
-  match = raw.match(/(\d{1,2})\s*(?:&|and)?\s*(?:under|u)\b/i);
-  if (match) {
-    const max = Number(match[1]);
-    if (Number.isFinite(max)) {
-      return { min: 0, max };
-    }
+  const underRegex = /(\d{1,2})\s*(?:&|and)?\s*(?:under|u)\b/gi;
+  while ((match = underRegex.exec(raw)) !== null) {
+    addRange(0, match[1]);
   }
 
-  match = raw.match(/(\d{1,2})\s*(?:&|and)?\s*over\b/i);
-  if (match) {
-    const min = Number(match[1]);
-    if (Number.isFinite(min)) {
-      return { min, max: 120 };
-    }
+  const overRegex = /(\d{1,2})\s*(?:&|and)?\s*over\b/gi;
+  while ((match = overRegex.exec(raw)) !== null) {
+    addRange(match[1], 120);
   }
 
   if (raw.includes("senior")) {
-    return { min: 15, max: 120 };
+    addRange(15, 120);
   }
   if (raw.includes("junior")) {
-    return { min: 0, max: 14 };
+    addRange(0, 14);
   }
 
-  return null;
+  return ranges;
 }
 
 function ageMatches(eventAgeGroup, swimmerDob, referenceDate) {
-  const range = parseAgeGroupRange(eventAgeGroup);
-  if (!range) return true;
+  const ranges = parseAgeGroupRanges(eventAgeGroup);
+  if (!ranges.length) return true;
 
   const age = calculateAgeOnDate(swimmerDob, referenceDate);
   if (age == null) return true;
 
-  return age >= range.min && age <= range.max;
+  return ranges.some((range) => age >= range.min && age <= range.max);
 }
 
 function parseTimeToSeconds(value) {
@@ -847,7 +864,13 @@ function detectMeetDateFromText(text, options = {}) {
 
 function detectMeetNameFromText(text, options = {}) {
   const rawText = String(text || "");
-  const fileName = cleanImportedFileName(options.file_name || "");
+  const rawFileName = String(options.file_name || "").trim();
+  const fileName = cleanImportedFileName(rawFileName);
+  const isPdfFileName = /\.pdf$/i.test(rawFileName);
+
+  if (isPdfFileName && fileName) {
+    return fileName.slice(0, 150);
+  }
 
   const lines = rawText
     .replace(/\r\n/g, "\n")
@@ -903,6 +926,54 @@ function extractAgeGroupFromText(text) {
   }
 
   return null;
+}
+
+function detectSessionAgeGroupFromText(text) {
+  const raw = String(text || "")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!raw) return null;
+
+  const tokens = [];
+  const seen = new Set();
+  const pushToken = (value) => {
+    const clean = String(value || "")
+      .replace(/\s+/g, " ")
+      .trim();
+    if (!clean) return;
+    const key = clean.toLowerCase();
+    if (seen.has(key)) return;
+    seen.add(key);
+    tokens.push(clean);
+  };
+
+  let match;
+  const rangeRegex = /(\d{1,2})\s*(?:-|to|\/)\s*(\d{1,2})/gi;
+  while ((match = rangeRegex.exec(raw)) !== null) {
+    const min = Number(match[1]);
+    const max = Number(match[2]);
+    if (Number.isFinite(min) && Number.isFinite(max)) {
+      pushToken(`${Math.min(min, max)}-${Math.max(min, max)}`);
+    }
+  }
+
+  const underRegex = /(\d{1,2})\s*(?:&|and)?\s*(?:under|u)\b/gi;
+  while ((match = underRegex.exec(raw)) !== null) {
+    pushToken(`${Number(match[1])} & Under`);
+  }
+
+  const overRegex = /(\d{1,2})\s*(?:&|and)?\s*(?:over|o)\b/gi;
+  while ((match = overRegex.exec(raw)) !== null) {
+    pushToken(`${Number(match[1])} & Over`);
+  }
+
+  if (!tokens.length) {
+    if (/\bsenior\b/i.test(raw)) pushToken("Senior");
+    if (/\bjunior\b/i.test(raw)) pushToken("Junior");
+    if (/\bopen\b/i.test(raw)) pushToken("Open");
+  }
+
+  return tokens.length ? tokens.join(" and ") : null;
 }
 
 function extractGenderFromText(text) {
@@ -1128,27 +1199,63 @@ function parseInviteSessionEventsFromText(content, options = {}) {
     return { days: [], events: [] };
   }
 
-  const days = [];
+  const dayMap = new Map();
   const events = [];
 
-  blocks.forEach((block) => {
+  const pushDay = (dayName, sessionLabelRaw) => {
+    const normalizedSession = normalizeInviteSessionPeriod(sessionLabelRaw);
     const sessionDate = meetDate
-      ? addDaysToDateOnly(meetDate, getDayOffsetFromDate(meetDate, block.dayName))
+      ? addDaysToDateOnly(meetDate, getDayOffsetFromDate(meetDate, dayName))
       : null;
-
-    if (sessionDate) {
-      days.push({
-        meet_day: sessionDate,
-        session_label: `${block.dayName} ${block.sessionLabel}`.trim(),
-        age_group: null,
-        gender: null,
-      });
+    if (!sessionDate) return null;
+    const key = `${sessionDate}|${dayName} ${normalizedSession}`.trim();
+    if (dayMap.has(key)) {
+      return dayMap.get(key);
     }
 
-    events.push(...parseInviteEventRowsFromBlock(block.text));
+    const entry = {
+      meet_day: sessionDate,
+      session_label: `${dayName} ${normalizedSession}`.trim(),
+      age_group: null,
+      gender: null,
+    };
+    dayMap.set(key, entry);
+    return entry;
+  };
+
+  // Capture session schedule summaries like: "Session 3: Saturday MID ..."
+  const sessionSummaryRegex = /\bSession\s*\d+\s*:\s*(Friday|Saturday|Sunday)\s+(AM|PM|MID(?:-?DAY)?|AFTERNOON|MORNING)\b/gi;
+  let sessionSummaryMatch;
+  while ((sessionSummaryMatch = sessionSummaryRegex.exec(String(content || ""))) !== null) {
+    pushDay(sessionSummaryMatch[1], sessionSummaryMatch[2]);
+  }
+
+  blocks.forEach((block) => {
+    const sessionLabel = `${block.dayName} ${block.sessionLabel}`.trim();
+    const sessionAgeGroup = detectSessionAgeGroupFromText(block.text);
+
+    const dayEntry = pushDay(block.dayName, block.sessionLabel);
+    if (dayEntry && sessionAgeGroup && !dayEntry.age_group) {
+      dayEntry.age_group = sessionAgeGroup;
+    }
+
+    const eventSessionDate = meetDate
+      ? addDaysToDateOnly(meetDate, getDayOffsetFromDate(meetDate, block.dayName))
+      : null;
+    const eventSessionTag = eventSessionDate
+      ? `[${sessionLabel} • ${eventSessionDate}]`
+      : `[${sessionLabel}]`;
+
+    const blockEvents = parseInviteEventRowsFromBlock(block.text).map((event) => ({
+      ...event,
+      event_name: `${eventSessionTag} ${event.event_name}`.trim(),
+    }));
+
+    events.push(...blockEvents);
   });
 
-  return { days, events };
+  const normalizedDays = normalizeMeetDayEntries(Array.from(dayMap.values()), meetDate);
+  return { days: normalizedDays, events };
 }
 
 function parseMeetEventsFromPlainText(content) {

@@ -348,29 +348,80 @@ function renderMeetOverview(detail) {
   `;
 }
 
+function parseEventNameWithSession(eventName) {
+  const raw = String(eventName || "").trim();
+  const match = raw.match(/^\[([^\]]+)\]\s*(.+)$/);
+  if (!match) {
+    return { sessionLabel: "", eventTitle: raw };
+  }
+
+  return {
+    sessionLabel: String(match[1] || "").trim(),
+    eventTitle: String(match[2] || "").trim(),
+  };
+}
+
 function renderPublicEventsTable(detail) {
   if (!meetPublicEventsTbody) return;
 
   const events = Array.isArray(detail && detail.events) ? detail.events : [];
-  meetPublicEventsTbody.innerHTML = events.length
-    ? events
-        .map((event, index) => {
-          const eventNumberMatch = String(event.event_name || "").match(/\bEvent\s+(\d{1,3})\b/i);
-          const eventNumber = eventNumberMatch ? eventNumberMatch[1] : String(index + 1);
-          return `
-            <tr>
-              <td>${escHtml(eventNumber)}</td>
-              <td>${escHtml(event.event_name || "-")}</td>
-              <td>${escHtml(event.stroke || "-")}</td>
-              <td>${event.distance_meters || "-"}</td>
-              <td>${escHtml(event.age_group || "-")}</td>
-              <td>${escHtml(event.gender || "-")}</td>
-              <td>${escHtml(event.qualifying_time_text || "No standard")}</td>
+  if (!events.length) {
+    meetPublicEventsTbody.innerHTML =
+      '<tr><td colspan="4" class="muted-inline">No events imported for this meet.</td></tr>';
+    return;
+  }
+
+  const rows = [];
+  let lastSessionLabel = "";
+
+  events.forEach((event, index) => {
+    const parsed = parseEventNameWithSession(event.event_name || "");
+    const eventTitle = parsed.eventTitle || String(event.event_name || "");
+    const sessionLabel = parsed.sessionLabel;
+
+    if (sessionLabel && sessionLabel !== lastSessionLabel) {
+      rows.push(
+        `<tr class="date-separator-row"><td colspan="4">${escHtml(sessionLabel)}</td></tr>`,
+      );
+      lastSessionLabel = sessionLabel;
+    }
+
+    const eventNumberMatch = String(eventTitle || "").match(/\bEvent\s+(\d{1,3})\b/i);
+    const eventNumber = eventNumberMatch ? eventNumberMatch[1] : String(index + 1);
+    const cleanEventName = String(eventTitle || "-")
+      .replace(/\bEvent\s+\d{1,3}\b\s*/i, "")
+      .trim();
+          const standardText = event.qualifying_time_text || "NT";
+          const entryState = Number(event.is_selected) === 1 ? "IN" : "OUT";
+          const entryClass = Number(event.is_selected) === 1 ? "event-entry-in" : "event-entry-out";
+          const tagBits = [event.age_group || "", event.gender || ""].filter(Boolean);
+          const metaBits = [event.distance_meters ? `${event.distance_meters}m` : "", event.stroke || ""]
+            .filter(Boolean)
+            .join(" ");
+
+    rows.push(`
+            <tr class="meet-event-row ${Number(event.is_selected) === 1 ? "is-selected" : ""}">
+              <td>
+                <span class="event-entry-pill ${entryClass}">${entryState}</span>
+              </td>
+              <td>
+                <div class="event-main-line">
+                  <span class="event-number-pill">#${escHtml(eventNumber)}</span>
+                  <span class="event-title-text">${escHtml(cleanEventName || eventTitle || "-")}</span>
+                </div>
+                <div class="event-sub-line">${escHtml(metaBits || "Distance and stroke pending")}</div>
+              </td>
+              <td><span class="event-time-text">${escHtml(standardText)}</span></td>
+              <td>
+                ${tagBits.length
+                  ? tagBits.map((tag) => `<span class="event-standard-chip">${escHtml(tag)}</span>`).join("")
+                  : '<span class="event-standard-muted">Open</span>'}
+              </td>
             </tr>
-          `;
-        })
-        .join("")
-    : '<tr><td colspan="7" class="muted-inline">No events imported for this meet.</td></tr>';
+          `);
+  });
+
+  meetPublicEventsTbody.innerHTML = rows.join("");
 }
 
 function renderMeetEditForm(detail) {
@@ -400,10 +451,12 @@ function renderCoachEventSelection(detail) {
   const rows = detail.events
     .map((event) => {
       const standard = event.qualifying_time_text || "No standard";
+      const parsed = parseEventNameWithSession(event.event_name || "");
+      const displayName = parsed.eventTitle || event.event_name;
       return `
         <tr>
           <td><input type="checkbox" data-event-select="${event.id}" ${Number(event.is_selected) ? "checked" : ""} /></td>
-          <td>${escHtml(event.event_name)}</td>
+          <td>${escHtml(displayName)}</td>
           <td>${escHtml(event.stroke || "-")}</td>
           <td>${event.distance_meters || "-"}</td>
           <td>${escHtml(event.gender || "-")}</td>
@@ -445,42 +498,56 @@ function renderDeclarationTable(detail) {
       declarationSessionKey(entry.swimmer_id, entry.meet_day, entry.session_label),
       {
         status: entry.status || "maybe",
-        note: entry.note || "",
       },
     );
   });
 
-  const rows = [];
+  const cards = [];
   (detail.swimmers || []).forEach((swimmer) => {
-    dayValues.forEach((dayInfo) => {
+    const eligibleDayValues = dayValues.filter((dayInfo) => {
       const key = declarationSessionKey(swimmer.swimmer_id, dayInfo.meet_day, dayInfo.session_label);
-      const existing = declarationMap.get(key) || { status: "maybe", note: "" };
-      const allowed = declarationEligibility.has(key) ? declarationEligibility.get(key) : true;
-      const sessionText = dayInfo.session_label
-        ? `${formatDate(dayInfo.meet_day)} · ${dayInfo.session_label}`
-        : formatDate(dayInfo.meet_day);
-      const ruleBits = [dayInfo.age_group || "", dayInfo.gender || ""].filter(Boolean).join(" · ");
-      const ruleText = ruleBits ? ` (${ruleBits})` : "";
-      const disabledAttr = allowed ? "" : "disabled";
-
-      rows.push(`
-        <tr>
-          <td>${escHtml(swimmer.swimmer_name)}</td>
-          <td>${escHtml(sessionText + ruleText)}</td>
-          <td>
-            <select data-declare-status="${swimmer.swimmer_id}" data-day="${dayInfo.meet_day}" data-session-label="${escHtml(dayInfo.session_label)}" ${disabledAttr}>
-              <option value="yes" ${existing.status === "yes" ? "selected" : ""}>Yes</option>
-              <option value="no" ${existing.status === "no" ? "selected" : ""}>No</option>
-              <option value="maybe" ${existing.status === "maybe" ? "selected" : ""}>Maybe</option>
-            </select>
-          </td>
-          <td><input type="text" data-declare-note="${swimmer.swimmer_id}" data-day="${dayInfo.meet_day}" data-session-label="${escHtml(dayInfo.session_label)}" value="${escHtml(existing.note)}" placeholder="${allowed ? "Optional note" : "Not eligible for this session"}" ${disabledAttr} /></td>
-        </tr>
-      `);
+      return declarationEligibility.has(key) ? declarationEligibility.get(key) : true;
     });
+
+    if (!eligibleDayValues.length) {
+      return;
+    }
+
+    const sessionRows = eligibleDayValues
+      .map((dayInfo, index) => {
+        const key = declarationSessionKey(swimmer.swimmer_id, dayInfo.meet_day, dayInfo.session_label);
+        const existing = declarationMap.get(key) || { status: "maybe" };
+        const statusValue = existing.status === "yes" || existing.status === "no" ? existing.status : "maybe";
+        const sessionName = dayInfo.session_label || `Session ${index + 1}`;
+        const heading = `${sessionName} • ${formatDate(dayInfo.meet_day)}`;
+        const ruleBits = [dayInfo.age_group || "", dayInfo.gender || ""].filter(Boolean).join(" • ");
+        const eligibilityText = ruleBits ? `Eligible: ${ruleBits}` : "Eligible";
+
+        return `
+          <div class="declare-session-row">
+            <div class="declare-session-head">${escHtml(heading)}</div>
+            <div class="declare-session-meta">${escHtml(eligibilityText)}</div>
+            <div class="declare-session-toggle" data-declare-toggle-group="${swimmer.swimmer_id}|${escHtml(dayInfo.meet_day)}|${escHtml(dayInfo.session_label)}">
+              <button type="button" class="declare-choice-btn ${statusValue === "yes" ? "active" : ""}" data-declare-choice="yes" data-swimmer-id="${swimmer.swimmer_id}" data-day="${escHtml(dayInfo.meet_day)}" data-session-label="${escHtml(dayInfo.session_label)}">Opt in</button>
+              <button type="button" class="declare-choice-btn ${statusValue === "no" ? "active" : ""}" data-declare-choice="no" data-swimmer-id="${swimmer.swimmer_id}" data-day="${escHtml(dayInfo.meet_day)}" data-session-label="${escHtml(dayInfo.session_label)}">Opt out</button>
+            </div>
+            <input type="hidden" data-declare-status="${swimmer.swimmer_id}" data-day="${escHtml(dayInfo.meet_day)}" data-session-label="${escHtml(dayInfo.session_label)}" value="${statusValue}" />
+          </div>
+        `;
+      })
+      .join("");
+
+    cards.push(`
+      <article class="declare-swimmer-card">
+        <div class="declare-swimmer-header">${escHtml(swimmer.swimmer_name)}</div>
+        <div class="declare-swimmer-group">${escHtml(swimmer.group_name || "")}</div>
+        ${sessionRows}
+      </article>
+    `);
   });
 
-  declareTbody.innerHTML = rows.join("") || '<tr><td colspan="4" class="muted-inline">No eligible swimmers or meet days.</td></tr>';
+  declareTbody.innerHTML =
+    cards.join("") || '<div class="muted-inline" style="padding:0.65rem;">No eligible swimmers or meet days.</div>';
   hide(declareStatus);
   show(declareControls);
 }
@@ -524,7 +591,9 @@ function renderCoachEntryTable(detail) {
       ? eligibleEvents
           .map((event) => {
             const checked = entrySet.has(`${swimmerId}|${Number(event.id)}`) ? "checked" : "";
-            return `<label class="checkbox-row" style="margin:0 0 0.35rem 0;"><input type="checkbox" data-entry-swimmer="${swimmerId}" data-entry-event="${event.id}" ${checked} /><span>${escHtml(event.event_name)}</span></label>`;
+            const parsed = parseEventNameWithSession(event.event_name || "");
+            const displayName = parsed.eventTitle || event.event_name;
+            return `<label class="checkbox-row" style="margin:0 0 0.35rem 0;"><input type="checkbox" data-entry-swimmer="${swimmerId}" data-entry-event="${event.id}" ${checked} /><span>${escHtml(displayName)}</span></label>`;
           })
           .join("")
       : '<span class="muted-inline">No eligible selected events.</span>';
@@ -1159,29 +1228,60 @@ btnSaveEventSelection.addEventListener("click", async () => {
   }
 });
 
+if (declareControls) {
+  declareControls.addEventListener("click", (event) => {
+    const btn = event.target.closest("button[data-declare-choice]");
+    if (!btn || btn.disabled) return;
+
+    const swimmerId = Number(btn.getAttribute("data-swimmer-id"));
+    const day = String(btn.getAttribute("data-day") || "");
+    const sessionLabel = String(btn.getAttribute("data-session-label") || "");
+    const choice = String(btn.getAttribute("data-declare-choice") || "").toLowerCase();
+    if (!Number.isInteger(swimmerId) || !day || (choice !== "yes" && choice !== "no")) {
+      return;
+    }
+
+    const statusInput = Array.from(
+      declareTbody.querySelectorAll("input[data-declare-status][data-day][data-session-label]"),
+    ).find(
+      (input) =>
+        Number(input.getAttribute("data-declare-status")) === swimmerId &&
+        String(input.getAttribute("data-day") || "") === day &&
+        String(input.getAttribute("data-session-label") || "") === sessionLabel,
+    );
+
+    if (!statusInput) return;
+    statusInput.value = choice;
+
+    const group = btn.closest(".declare-session-toggle");
+    if (group) {
+      group.querySelectorAll("button[data-declare-choice]").forEach((choiceBtn) => {
+        choiceBtn.classList.toggle(
+          "active",
+          String(choiceBtn.getAttribute("data-declare-choice") || "") === choice,
+        );
+      });
+    }
+  });
+}
+
 btnSaveDeclarations.addEventListener("click", async () => {
   if (!selectedMeetId || !selectedMeetDetail) return;
 
   const declarations = [];
-  const statusEls = Array.from(declareTbody.querySelectorAll("select[data-declare-status]"));
+  const statusEls = Array.from(declareTbody.querySelectorAll("input[data-declare-status]"));
 
   statusEls.forEach((statusEl) => {
     const swimmerId = Number(statusEl.getAttribute("data-declare-status"));
     const day = String(statusEl.getAttribute("data-day") || "");
     const sessionLabel = String(statusEl.getAttribute("data-session-label") || "");
-    const noteEl = Array.from(declareTbody.querySelectorAll("input[data-declare-note][data-day][data-session-label]")).find(
-      (input) =>
-        Number(input.getAttribute("data-declare-note")) === swimmerId &&
-        String(input.getAttribute("data-day") || "") === day &&
-        String(input.getAttribute("data-session-label") || "") === sessionLabel,
-    );
 
     declarations.push({
       swimmer_id: swimmerId,
       meet_day: day,
       session_label: sessionLabel,
       status: statusEl.value,
-      note: noteEl ? noteEl.value : "",
+      note: "",
     });
   });
 
