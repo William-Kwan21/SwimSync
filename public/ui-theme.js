@@ -1,4 +1,75 @@
 (function initUiTheme() {
+  const THEME_MODE_KEY = "swimsync-theme-mode";
+  const THEME_ACCENT_KEY = "swimsync-theme-accent";
+  const ACCENTS = {
+    ocean: {
+      label: "Ocean",
+      accent: "#1a75aa",
+      accentSoft: "rgba(112, 217, 230, 0.32)",
+      accentGlow: "rgba(26, 117, 170, 0.18)",
+    },
+    teal: {
+      label: "Teal",
+      accent: "#0f918b",
+      accentSoft: "rgba(114, 224, 214, 0.28)",
+      accentGlow: "rgba(15, 145, 139, 0.18)",
+    },
+    sunset: {
+      label: "Sunset",
+      accent: "#d96b4f",
+      accentSoft: "rgba(255, 183, 155, 0.28)",
+      accentGlow: "rgba(217, 107, 79, 0.2)",
+    },
+    plum: {
+      label: "Plum",
+      accent: "#7a5cf0",
+      accentSoft: "rgba(180, 170, 255, 0.26)",
+      accentGlow: "rgba(122, 92, 240, 0.2)",
+    },
+    forest: {
+      label: "Forest",
+      accent: "#2d8c6f",
+      accentSoft: "rgba(136, 219, 190, 0.24)",
+      accentGlow: "rgba(45, 140, 111, 0.18)",
+    },
+  };
+
+  function getPreferredMode() {
+    if (typeof window === "undefined" || typeof window.matchMedia !== "function") {
+      return "light";
+    }
+
+    return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+  }
+
+  function readThemePreferences() {
+    const storedMode = window.localStorage.getItem(THEME_MODE_KEY);
+    const storedAccent = window.localStorage.getItem(THEME_ACCENT_KEY);
+    return {
+      mode: storedMode === "dark" || storedMode === "light" ? storedMode : getPreferredMode(),
+      accent: Object.prototype.hasOwnProperty.call(ACCENTS, storedAccent) ? storedAccent : "ocean",
+    };
+  }
+
+  function applyTheme(mode, accent) {
+    if (!document.body) {
+      return;
+    }
+
+    const safeMode = mode === "dark" ? "dark" : "light";
+    const safeAccent = Object.prototype.hasOwnProperty.call(ACCENTS, accent) ? accent : "ocean";
+    const palette = ACCENTS[safeAccent];
+
+    document.body.dataset.theme = safeMode;
+    document.body.dataset.accent = safeAccent;
+    document.documentElement.style.colorScheme = safeMode;
+    document.body.style.setProperty("--theme-accent", palette.accent);
+    document.body.style.setProperty("--theme-accent-soft", palette.accentSoft);
+    document.body.style.setProperty("--theme-accent-glow", palette.accentGlow);
+    window.localStorage.setItem(THEME_MODE_KEY, safeMode);
+    window.localStorage.setItem(THEME_ACCENT_KEY, safeAccent);
+  }
+
   function ensurePopupShell() {
     let shell = document.getElementById("ui-popup-shell");
     if (shell) {
@@ -110,6 +181,87 @@
     };
   }
 
+  function renderThemeControls() {
+    const panel = document.createElement("div");
+    panel.id = "ui-theme-panel";
+    panel.className = "theme-panel";
+    panel.innerHTML = `
+      <span class="theme-panel-label">Appearance</span>
+      <button type="button" class="btn btn-secondary theme-mode-toggle" data-theme-toggle>Light</button>
+      <label class="theme-accent-wrap">
+        <span class="visually-hidden">Theme color</span>
+        <select class="theme-accent-select" data-theme-accent aria-label="Theme color"></select>
+      </label>
+    `;
+
+    const accentSelect = panel.querySelector("[data-theme-accent]");
+    Object.entries(ACCENTS).forEach(function ([key, accent]) {
+      const option = document.createElement("option");
+      option.value = key;
+      option.textContent = accent.label;
+      accentSelect.appendChild(option);
+    });
+
+    return panel;
+  }
+
+  function syncThemeControls(panel) {
+    if (!panel) {
+      return;
+    }
+
+    const mode = document.body && document.body.dataset.theme === "dark" ? "dark" : "light";
+    const accent = (document.body && document.body.dataset.accent) || "ocean";
+    const toggleBtn = panel.querySelector("[data-theme-toggle]");
+    const accentSelect = panel.querySelector("[data-theme-accent]");
+
+    if (toggleBtn) {
+      toggleBtn.textContent = mode === "dark" ? "Dark" : "Light";
+      toggleBtn.setAttribute("aria-pressed", mode === "dark" ? "true" : "false");
+    }
+
+    if (accentSelect && accentSelect.value !== accent) {
+      accentSelect.value = accent;
+    }
+  }
+
+  function mountThemeControls() {
+    if (document.getElementById("ui-theme-panel")) {
+      return document.getElementById("ui-theme-panel");
+    }
+
+    const panel = renderThemeControls();
+    const headerRow = document.querySelector("header .header-top-row");
+    const authBrand = document.querySelector(".auth-card .auth-brand");
+
+    if (headerRow) {
+      const logoutButton = headerRow.querySelector("#btn-logout");
+      if (logoutButton) {
+        headerRow.insertBefore(panel, logoutButton);
+      } else {
+        headerRow.appendChild(panel);
+      }
+    } else if (authBrand && authBrand.parentElement) {
+      authBrand.insertAdjacentElement("afterend", panel);
+    } else {
+      document.body.insertBefore(panel, document.body.firstChild);
+    }
+
+    panel.querySelector("[data-theme-toggle]").addEventListener("click", function () {
+      const nextMode = document.body && document.body.dataset.theme === "dark" ? "light" : "dark";
+      applyTheme(nextMode, (document.body && document.body.dataset.accent) || "ocean");
+      syncThemeControls(panel);
+    });
+
+    panel.querySelector("[data-theme-accent]").addEventListener("change", function (event) {
+      applyTheme((document.body && document.body.dataset.theme) || "light", event.target.value);
+      syncThemeControls(panel);
+    });
+
+    syncThemeControls(panel);
+    return panel;
+  }
+
   function enhanceSelect(selectEl) {
     if (!selectEl || selectEl.dataset.uiEnhanced === "true") {
       return;
@@ -123,7 +275,6 @@
       return;
     }
 
-    // Keep native behavior off and apply themed dropdown.
     selectEl.dataset.uiEnhanced = "true";
     new TomSelect(selectEl, {
       create: false,
@@ -225,7 +376,10 @@
   }
 
   document.addEventListener("DOMContentLoaded", function () {
+    const preferences = readThemePreferences();
+    applyTheme(preferences.mode, preferences.accent);
     setupPopupApi();
+    mountThemeControls();
     runEnhancements(document);
     observeDynamicDom();
   });

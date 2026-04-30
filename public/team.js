@@ -1,5 +1,4 @@
 /* ── selectors ── */
-const dbStatus = document.getElementById("db-status");
 const userRoleBadge = document.getElementById("user-role-badge");
 const btnLogout = document.getElementById("btn-logout");
 
@@ -118,12 +117,9 @@ async function loadPracticeGroups() {
 async function checkHealth() {
   try {
     const res = await fetch("/api/health");
-    const data = await res.json();
-    dbStatus.textContent = `✓ DB connected — ${new Date(data.dbTime).toLocaleTimeString()}`;
-    dbStatus.className = "badge ok";
+    await res.json();
   } catch {
-    dbStatus.textContent = "✗ DB connection failed";
-    dbStatus.className = "badge fail";
+    return;
   }
 }
 

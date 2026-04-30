@@ -2834,7 +2834,32 @@ app.post(
 app.delete(
   "/api/meets/:id",
   authenticate,
-  requireRole("admin", "coach"),
+  requireRole("admin"),
+  async (req, res) => {
+    const meetId = Number(req.params.id);
+    if (!Number.isInteger(meetId) || meetId <= 0) {
+      return res.status(400).json({ message: "Invalid meet id" });
+    }
+
+    try {
+      const [result] = await pool.query("DELETE FROM meets WHERE id = ?", [meetId]);
+      if (result.affectedRows === 0) {
+        return res.status(404).json({ message: "Meet not found" });
+      }
+      return res.status(204).send();
+    } catch (error) {
+      return res.status(500).json({
+        message: "Failed to delete meet",
+        error: error.message,
+      });
+    }
+  },
+);
+
+app.post(
+  "/api/meets/:id/delete",
+  authenticate,
+  requireRole("admin"),
   async (req, res) => {
     const meetId = Number(req.params.id);
     if (!Number.isInteger(meetId) || meetId <= 0) {

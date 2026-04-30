@@ -1,4 +1,3 @@
-const dbStatus = document.getElementById("db-status");
 const usersTable = document.getElementById("users-table");
 const usersTbody = document.getElementById("users-tbody");
 const usersLoading = document.getElementById("users-loading");
@@ -230,12 +229,9 @@ async function checkHealth() {
     if (!res.ok) {
       throw new Error("bad response");
     }
-    const data = await res.json();
-    dbStatus.textContent = `✓ DB connected — ${new Date(data.dbTime).toLocaleTimeString()}`;
-    dbStatus.className = "badge ok";
+    await res.json();
   } catch {
-    dbStatus.textContent = "✗ DB connection failed";
-    dbStatus.className = "badge fail";
+    return;
   }
 }
 

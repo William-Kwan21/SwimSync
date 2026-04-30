@@ -1,4 +1,3 @@
-const dbStatus = document.getElementById("db-status");
 const userRoleBadge = document.getElementById("user-role-badge");
 const btnLogout = document.getElementById("btn-logout");
 
@@ -158,12 +157,9 @@ async function checkHealth() {
   try {
     const res = await fetch("/api/health");
     if (!res.ok) throw new Error("bad response");
-    const data = await res.json();
-    dbStatus.textContent = `✓ DB connected — ${new Date(data.dbTime).toLocaleTimeString()}`;
-    dbStatus.className = "badge ok";
+    await res.json();
   } catch {
-    dbStatus.textContent = "✗ DB connection failed";
-    dbStatus.className = "badge fail";
+    return;
   }
 }
 
@@ -234,8 +230,7 @@ if (meetCreateForm) {
 function renderMeetRow(meet) {
   const tr = document.createElement("tr");
   tr.dataset.meetId = String(meet.id);
-  const canDeleteMeet =
-    currentUser && (currentUser.role === "admin" || currentUser.role === "coach");
+  const canDeleteMeet = currentUser && currentUser.role === "admin";
   const actionButtons = canDeleteMeet
     ? `<div style="display:flex; gap:0.45rem; flex-wrap:wrap;">
          <button class="btn btn-secondary" data-open-meet="${meet.id}" type="button">Open</button>
@@ -933,10 +928,25 @@ meetsTbody.addEventListener("click", async (event) => {
     const originalText = deleteBtn.textContent;
     deleteBtn.textContent = "Deleting...";
     try {
-      const res = await apiFetch(`/api/meets/${meetId}`, {
+      let res = await apiFetch(`/api/meets/${meetId}`, {
         method: "DELETE",
       });
-      const data = await safeJson(res);
+      let data = await safeJson(res);
+
+      const routeNotFound =
+        !res.ok &&
+        res.status === 404 &&
+        data &&
+        typeof data.message === "string" &&
+        data.message.toLowerCase().includes("route not found");
+
+      if (routeNotFound) {
+        res = await apiFetch(`/api/meets/${meetId}/delete`, {
+          method: "POST",
+        });
+        data = await safeJson(res);
+      }
+
       if (!res.ok) {
         throw new Error((data && data.message) || `Failed (${res.status})`);
       }
