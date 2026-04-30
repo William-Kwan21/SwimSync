@@ -1476,7 +1476,7 @@ function parseMeetFileContent(content, options = {}) {
       meet_date: detectedDate,
       location: location || null,
       host_team: hostTeam || null,
-      days: [detectedDate],
+      days: normalizeMeetDayEntries([detectedDate], detectedDate),
       events: parsedEvents,
     };
   }
@@ -2958,10 +2958,19 @@ app.post(
       const meetId = meetResult.insertId;
 
       if (parsedMeet.days.length) {
-        const dayValuesWithSession = parsedMeet.days.map(() => "(?, ?, ?, ?, ?)").join(", ");
-        const dayParams = parsedMeet.days.flatMap((day) => [
+        const normalizedImportDays = normalizeMeetDayEntries(
+          parsedMeet.days,
+          parsedMeet.meet_date,
+        ).filter((day) => normalizeDateOnly(day && day.meet_day));
+
+        if (!normalizedImportDays.length) {
+          throw new Error("No valid meet days could be derived from the imported file");
+        }
+
+        const dayValuesWithSession = normalizedImportDays.map(() => "(?, ?, ?, ?, ?)").join(", ");
+        const dayParams = normalizedImportDays.flatMap((day) => [
           meetId,
-          day.meet_day,
+          normalizeDateOnly(day.meet_day),
           normalizeSessionLabel(day.session_label),
           day.age_group || null,
           day.gender || null,
