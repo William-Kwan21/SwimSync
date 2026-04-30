@@ -932,7 +932,245 @@ function buildEventName(eventNumber, nameText) {
   return `Event ${eventNumber} ${clean}`;
 }
 
+function normalizeInviteSessionPeriod(value) {
+  const raw = String(value || "")
+    .replace(/\s+/g, "")
+    .replace(/-/g, "")
+    .toUpperCase();
+  if (raw.startsWith("MID")) return "MID";
+  if (raw === "AM" || raw === "PM") return raw;
+  return String(value || "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toUpperCase();
+}
+
+function addDaysToDateOnly(value, days) {
+  const base = normalizeDateOnly(value);
+  if (!base) return null;
+
+  const date = new Date(`${base}T00:00:00`);
+  if (Number.isNaN(date.getTime())) return null;
+
+  date.setDate(date.getDate() + Number(days || 0));
+  return date.toISOString().slice(0, 10);
+}
+
+function getDayOffsetFromDate(dateOnly, dayName) {
+  const base = normalizeDateOnly(dateOnly);
+  if (!base) return 0;
+
+  const dayIndexMap = {
+    sunday: 0,
+    monday: 1,
+    tuesday: 2,
+    wednesday: 3,
+    thursday: 4,
+    friday: 5,
+    saturday: 6,
+  };
+
+  const target = dayIndexMap[String(dayName || "").trim().toLowerCase()];
+  if (target == null) return 0;
+
+  const date = new Date(`${base}T00:00:00`);
+  if (Number.isNaN(date.getTime())) return 0;
+
+  return (target - date.getDay() + 7) % 7;
+}
+
+function parseInviteSessionEventsFromText(content, options = {}) {
+  const lines = String(content || "")
+    .replace(/\r\n/g, "\n")
+    .replace(/\r/g, "\n")
+    .split("\n")
+    .map((line) => line.replace(/\s+/g, " ").trim())
+    .filter(Boolean);
+
+  const meetDate =
+    normalizeDateOnly(options.meet_date) || detectMeetDateFromText(content, options);
+  const sessionHeadingRegex = /\b(Friday|Saturday|Sunday)\s+(AM|PM|MID(?:-DAY)?|MID)\s+Session\b/i;
+  const blocks = [];
+  let currentBlock = null;
+
+  const flushBlock = () => {
+    if (currentBlock) {
+      blocks.push(currentBlock);
+      currentBlock = null;
+    }
+  };
+
+  lines.forEach((line) => {
+    const headingMatch = line.match(sessionHeadingRegex);
+    if (headingMatch) {
+      flushBlock();
+      currentBlock = {
+        dayName: headingMatch[1],
+        sessionLabel: normalizeInviteSessionPeriod(headingMatch[2]),
+        text: line.slice((headingMatch.index || 0) + headingMatch[0].length).trim(),
+      };
+      return;
+    }
+
+    if (!currentBlock) {
+      return;
+    }
+
+    currentBlock.text = `${currentBlock.text} ${line}`.trim();
+  });
+
+  flushBlock();
+
+  if (!blocks.length) {
+    return { days: [], events: [] };
+  }
+
+  const days = [];
+  const events = [];
+  const seen = new Set();
+  const blockStrokePatterns = [
+    { re: /\bindividual\s+medley\b|\bim\b/i, stroke: "individual medley" },
+    { re: /\bfreestyle\b|\bfree\b/i, stroke: "freestyle" },
+    { re: /\bbackstroke\b|\bback\b/i, stroke: "backstroke" },
+    { re: /\bbreaststroke\b|\bbreast\b/i, stroke: "breaststroke" },
+    { re: /\bbutterfly\b|\bfly\b/i, stroke: "butterfly" },
+    { re: /\brelay\b/i, stroke: "relay" },
+  ];
+
+  const pushEvent = (eventNumber, descriptor, gender) => {
+    const cleanDescriptor = String(descriptor || "")
+      .replace(/\bGirls\s+Event\s+Boys\b/gi, " ")
+      .replace(/\bGirls\s+Event\b|\bBoys\b/gi, " ")
+      .replace(/\bwarm[- ]?up:.*$/i, " ")
+      .replace(/\bstart:.*$/i, " ")
+      .replace(/\b15\s*minute\s*break\b/i, " ")
+      .replace(/\*+/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+
+    if (!Number.isFinite(eventNumber) || eventNumber <= 0 || !cleanDescriptor) {
+      return;
+    }
+
+    const dedupeKey = `${eventNumber}|${gender}|${cleanDescriptor.toLowerCase()}`;
+    if (seen.has(dedupeKey)) {
+      return;
+    }
+    seen.add(dedupeKey);
+
+    const distanceWithUnits = cleanDescriptor.match(/\b(\d{2,4})\s*(?:m|meter|meters|yd|yard|yards)\b/i);
+    const distanceNoUnits = cleanDescriptor.match(
+      /\b(25|50|100|200|400|500|800|1000|1500)\b\s*(?=(?:freestyle|free|backstroke|back|breaststroke|breast|butterfly|fly|individual\s+medley|im|relay)\b)/i,
+    );
+    const distanceMeters = distanceWithUnits
+      ? Number(distanceWithUnits[1])
+      : distanceNoUnits
+        ? Number(distanceNoUnits[1])
+        : null;
+
+    let stroke = null;
+    for (const candidate of blockStrokePatterns) {
+      if (candidate.re.test(cleanDescriptor)) {
+        stroke = candidate.stroke;
+        break;
+      }
+    }
+
+    events.push({
+      event_name: buildEventName(eventNumber, cleanDescriptor),
+      stroke: stroke ? normalizeStroke(stroke) : null,
+      distance_meters: Number.isFinite(distanceMeters) ? distanceMeters : null,
+      age_group: extractAgeGroupFromText(cleanDescriptor) || null,
+      gender: normalizeGender(gender),
+      qualifying_time_seconds: null,
+      qualifying_time_text: null,
+      is_selected: events.length < 4,
+    });
+  };
+
+  blocks.forEach((block) => {
+    const sessionDate = meetDate
+      ? addDaysToDateOnly(meetDate, getDayOffsetFromDate(meetDate, block.dayName))
+      : null;
+
+    if (sessionDate) {
+      days.push({
+        meet_day: sessionDate,
+        session_label: `${block.dayName} ${block.sessionLabel}`.trim(),
+        age_group: null,
+        gender: null,
+      });
+    }
+
+    let tableText = block.text;
+    const tableStart = tableText.search(/\bGirls\s+Event\s+Boys\b/i);
+    if (tableStart >= 0) {
+      tableText = tableText.slice(tableStart);
+    }
+
+    tableText = tableText
+      .replace(/\bGirls\s+Event\s+Boys\b/i, " ")
+      .replace(/\b15\s*minute\s*break\b/i, " ")
+      .replace(/\*+/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+
+    const tokens = tableText.split(" ").filter(Boolean);
+    const distanceSet = new Set(["25", "50", "100", "200", "400", "500", "800", "1000", "1500"]);
+    const isStandaloneNumber = (token) => /^\d{1,3}$/.test(token);
+
+    let index = 0;
+    while (index < tokens.length) {
+      const token = tokens[index];
+      if (!isStandaloneNumber(token)) {
+        index += 1;
+        continue;
+      }
+
+      const oddNumber = Number(token);
+      index += 1;
+
+      const ageTokens = [];
+      while (index < tokens.length && !distanceSet.has(tokens[index])) {
+        ageTokens.push(tokens[index]);
+        index += 1;
+      }
+
+      if (index >= tokens.length) {
+        break;
+      }
+
+      const distanceToken = tokens[index];
+      index += 1;
+
+      const strokeTokens = [];
+      while (index < tokens.length && !isStandaloneNumber(tokens[index])) {
+        strokeTokens.push(tokens[index]);
+        index += 1;
+      }
+
+      if (index >= tokens.length) {
+        break;
+      }
+
+      const evenNumber = Number(tokens[index]);
+      index += 1;
+
+      const descriptor = [...ageTokens, distanceToken, ...strokeTokens].join(" ").trim();
+      pushEvent(oddNumber, descriptor, "female");
+      pushEvent(evenNumber, descriptor, "male");
+    }
+  });
+
+  return { days, events };
+}
+
 function parseMeetEventsFromPlainText(content) {
+  const inviteParsed = parseInviteSessionEventsFromText(content);
+  if (inviteParsed.events.length) {
+    return inviteParsed.events;
+  }
+
   const lines = String(content || "")
     .replace(/\r\n/g, "\n")
     .replace(/\r/g, "\n")
@@ -1097,6 +1335,23 @@ function parseMeetFileContent(content, options = {}) {
   }
 
   if (!Array.isArray(payloadRows) || payloadRows.length === 0) {
+    const detectedDate =
+      detectMeetDateFromText(text, options) || normalizeDateOnly(new Date().toISOString().slice(0, 10));
+    const inviteParsed = parseInviteSessionEventsFromText(text, {
+      ...options,
+      meet_date: detectedDate,
+    });
+    if (inviteParsed.events.length) {
+      return {
+        meet_name: detectMeetNameFromText(text, options),
+        meet_date: detectedDate,
+        location: null,
+        host_team: null,
+        days: normalizeMeetDayEntries(inviteParsed.days, detectedDate),
+        events: inviteParsed.events,
+      };
+    }
+
     const parsedEvents = parseMeetEventsFromPlainText(text);
     if (!parsedEvents.length) {
       throw new Error(
@@ -1105,8 +1360,6 @@ function parseMeetFileContent(content, options = {}) {
     }
 
     const meetName = detectMeetNameFromText(text, options);
-    const detectedDate =
-      detectMeetDateFromText(text, options) || normalizeDateOnly(new Date().toISOString().slice(0, 10));
 
     return {
       meet_name: meetName,

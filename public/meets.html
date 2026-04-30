@@ -87,12 +87,6 @@
             </div>
             <form id="times-import-form" class="form-grid" autocomplete="off">
               <div class="form-row form-row-full">
-                <label for="times-import-swimmer">Default Swimmer (recommended for single-swimmer exports)</label>
-                <select id="times-import-swimmer">
-                  <option value="">Auto-detect from file</option>
-                </select>
-              </div>
-              <div class="form-row form-row-full">
                 <label for="times-import-file">Times file (JSON, CSV, TXT, or PDF)</label>
                 <input id="times-import-file" type="file" accept=".json,.csv,.txt,.pdf" required />
               </div>
@@ -111,7 +105,7 @@
           <form id="manual-time-form" class="form-grid" autocomplete="off">
             <div class="form-row">
               <label for="time-swimmer-name">Swimmer</label>
-              <select id="time-swimmer-name" required>
+              <select id="time-swimmer-name" data-no-theme="true" required>
                 <option value="">Loading swimmers...</option>
               </select>
             </div>
@@ -197,7 +191,29 @@
             </form>
           </div>
 
+          <div id="meet-overview" class="summary-grid"></div>
+
           <div id="meet-days" class="chip-list"></div>
+
+          <div class="card-header" style="margin-top: 1rem;">
+            <h2>Meet Events</h2>
+          </div>
+          <div class="table-wrap">
+            <table id="meet-public-events-table">
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>Event</th>
+                  <th>Stroke</th>
+                  <th>Distance</th>
+                  <th>Age Group</th>
+                  <th>Gender</th>
+                  <th>Standard</th>
+                </tr>
+              </thead>
+              <tbody id="meet-public-events-tbody"></tbody>
+            </table>
+          </div>
 
           <div id="coach-event-controls" class="hidden">
             <div class="card-header">

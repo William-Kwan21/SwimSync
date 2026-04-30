@@ -41,7 +41,9 @@ const meetsTbody = document.getElementById("meets-tbody");
 const meetDetailCard = document.getElementById("meet-detail-card");
 const meetDetailTitle = document.getElementById("meet-detail-title");
 const meetDetailMeta = document.getElementById("meet-detail-meta");
+const meetOverview = document.getElementById("meet-overview");
 const meetDays = document.getElementById("meet-days");
+const meetPublicEventsTbody = document.getElementById("meet-public-events-tbody");
 const meetEditControls = document.getElementById("meet-edit-controls");
 const meetEditForm = document.getElementById("meet-edit-form");
 const meetEditName = document.getElementById("meet-edit-name");
@@ -294,6 +296,69 @@ function renderMeetDays(days) {
     .join("");
 }
 
+function renderMeetOverview(detail) {
+  if (!meetOverview) return;
+
+  const meet = detail && detail.meet ? detail.meet : {};
+  const dayCount = Array.isArray(detail && detail.days) ? detail.days.length : 0;
+  const eventCount = Array.isArray(detail && detail.events) ? detail.events.length : 0;
+  const selectedCount = Array.isArray(detail && detail.events)
+    ? detail.events.filter((event) => Number(event.is_selected) === 1).length
+    : 0;
+
+  meetOverview.innerHTML = `
+    <div>
+      <p class="summary-label">Meet Name</p>
+      <p class="summary-value">${escHtml(meet.meet_name || "-")}</p>
+    </div>
+    <div>
+      <p class="summary-label">Meet Date</p>
+      <p class="summary-value">${formatDate(meet.meet_date)}</p>
+    </div>
+    <div>
+      <p class="summary-label">Location</p>
+      <p class="summary-value">${escHtml(meet.location || "Location TBD")}</p>
+    </div>
+    <div>
+      <p class="summary-label">Host Team</p>
+      <p class="summary-value">${escHtml(meet.host_team || "-")}</p>
+    </div>
+    <div>
+      <p class="summary-label">Sessions</p>
+      <p class="summary-value">${dayCount}</p>
+    </div>
+    <div>
+      <p class="summary-label">Events</p>
+      <p class="summary-value">${eventCount} total, ${selectedCount} selected</p>
+    </div>
+  `;
+}
+
+function renderPublicEventsTable(detail) {
+  if (!meetPublicEventsTbody) return;
+
+  const events = Array.isArray(detail && detail.events) ? detail.events : [];
+  meetPublicEventsTbody.innerHTML = events.length
+    ? events
+        .map((event, index) => {
+          const eventNumberMatch = String(event.event_name || "").match(/\bEvent\s+(\d{1,3})\b/i);
+          const eventNumber = eventNumberMatch ? eventNumberMatch[1] : String(index + 1);
+          return `
+            <tr>
+              <td>${escHtml(eventNumber)}</td>
+              <td>${escHtml(event.event_name || "-")}</td>
+              <td>${escHtml(event.stroke || "-")}</td>
+              <td>${event.distance_meters || "-"}</td>
+              <td>${escHtml(event.age_group || "-")}</td>
+              <td>${escHtml(event.gender || "-")}</td>
+              <td>${escHtml(event.qualifying_time_text || "No standard")}</td>
+            </tr>
+          `;
+        })
+        .join("")
+    : '<tr><td colspan="7" class="muted-inline">No events imported for this meet.</td></tr>';
+}
+
 function renderMeetEditForm(detail) {
   const canEditMeet = !!(detail && detail.can_select_events);
   if (!canEditMeet) {
@@ -476,9 +541,11 @@ async function loadMeetDetail(meetId) {
     selectedMeetDetail = detail;
 
     meetDetailTitle.textContent = detail.meet.meet_name;
-    meetDetailMeta.textContent = `${formatDate(detail.meet.meet_date)} · ${detail.meet.location || "Location TBD"}`;
+    meetDetailMeta.textContent = `${formatDate(detail.meet.meet_date)} · ${detail.meet.location || "Location TBD"}${detail.meet.host_team ? ` · ${detail.meet.host_team}` : ""}`;
+    renderMeetOverview(detail);
     renderMeetEditForm(detail);
     renderMeetDays(detail.days || []);
+    renderPublicEventsTable(detail);
     renderCoachEventSelection(detail);
     renderDeclarationTable(detail);
     renderCoachEntryTable(detail);
@@ -543,7 +610,11 @@ async function loadSwimmerOptionsForManualTime() {
     const optionsRes = await apiFetch("/api/swimmers/options");
     if (optionsRes.ok) {
       const optionsData = await optionsRes.json();
-      swimmers = Array.isArray(optionsData) ? optionsData : [];
+      swimmers = Array.isArray(optionsData)
+        ? optionsData
+        : Array.isArray(optionsData && optionsData.swimmers)
+          ? optionsData.swimmers
+          : [];
     } else {
       const res = await apiFetch("/api/team");
       if (!res.ok) {
@@ -572,7 +643,10 @@ async function loadSwimmerOptionsForManualTime() {
               : swimmer && swimmer.id != null
                 ? swimmer.id
                 : "";
-          const swimmerName = swimmer && swimmer.name ? swimmer.name : "Unnamed Swimmer";
+          const swimmerName =
+            swimmer && (swimmer.swimmer_name || swimmer.name || swimmer.email)
+              ? swimmer.swimmer_name || swimmer.name || swimmer.email
+              : `Swimmer ${swimmerId || ""}`.trim();
           const groupSuffix =
             swimmer && swimmer.group_name
               ? ` (${escHtml(swimmer.group_name)})`
