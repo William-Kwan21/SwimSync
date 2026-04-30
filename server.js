@@ -1058,8 +1058,9 @@ function splitInviteSessionBlocks(content) {
     .replace(/\r/g, "\n")
     .replace(/[ \t]+/g, " ");
 
-  const headingRegex = /\b(Friday|Saturday|Sunday)\s+(?:AM|PM|MID(?:-?DAY)?|AFTERNOON|MORNING)\s+Session\b/gi;
-  const matches = [];
+  // Try Pattern 1: "Friday AM Session" style
+  let headingRegex = /\b(Friday|Saturday|Sunday)\s+(?:AM|PM|MID(?:-?DAY)?|AFTERNOON|MORNING)\s+Session\b/gi;
+  let matches = [];
   let match;
 
   while ((match = headingRegex.exec(text))) {
@@ -1071,6 +1072,88 @@ function splitInviteSessionBlocks(content) {
       length: headingText.length,
       sessionLabel: normalizeInviteSessionPeriod(labelMatch ? labelMatch[1] : ""),
     });
+  }
+
+  // If Pattern 1 didn't work, try Pattern 2: "Start: TIME" followed by day info
+  if (!matches.length) {
+    const startRegex = /\bStart\s*:\s*(\d{1,2}):(\d{2})\s*(AM|PM)\b/gi;
+    const dayRegex = /\b(Friday|Saturday|Sunday)\b/i;
+    
+    let currentDay = "Saturday"; // Default day
+    let startMatch;
+    
+    // First pass: identify sections with "Start:" lines
+    const lines = text.split("\n");
+    const sections = [];
+    let currentSection = null;
+    
+    lines.forEach((line, idx) => {
+      // Update day context from any line that mentions a day
+      const dayMatch = line.match(dayRegex);
+      if (dayMatch) {
+        currentDay = dayMatch[1];
+      }
+      
+      const timeMatch = line.match(/\bStart\s*:\s*(\d{1,2}):(\d{2})\s*(AM|PM)\b/i);
+      if (timeMatch) {
+        if (currentSection) {
+          sections.push(currentSection);
+        }
+        const timeStr = `${timeMatch[1]}:${timeMatch[2]} ${timeMatch[3]}`;
+        currentSection = {
+          dayName: currentDay,
+          timeStr: timeStr,
+          sessionLabel: timeMatch[3] === "AM" ? "AM" : (parseInt(timeMatch[1]) < 12 ? "MORNING" : "AFTERNOON"),
+          startLineIdx: idx,
+          lines: [line],
+        };
+      } else if (currentSection) {
+        currentSection.lines.push(line);
+      }
+    });
+    
+    if (currentSection) {
+      sections.push(currentSection);
+    }
+    
+    // Convert sections to matches format
+    if (sections.length > 0) {
+      let charIndex = 0;
+      matches = [];
+      
+      sections.forEach((section, idx) => {
+        // Find the position of this section's start line in original text
+        const searchStr = section.lines[0];
+        const foundIdx = text.indexOf(searchStr, charIndex);
+        
+        if (foundIdx !== -1) {
+          matches.push({
+            index: foundIdx,
+            dayName: section.dayName,
+            length: 0,
+            sessionLabel: section.sessionLabel,
+          });
+          charIndex = foundIdx + searchStr.length;
+        }
+      });
+      
+      // If that didn't work, build it differently
+      if (matches.length === 0 && sections.length > 0) {
+        let textPos = 0;
+        sections.forEach((section) => {
+          const startPos = text.indexOf(section.lines[0], textPos);
+          if (startPos !== -1) {
+            matches.push({
+              index: startPos,
+              dayName: section.dayName,
+              length: 0,
+              sessionLabel: section.sessionLabel,
+            });
+            textPos = startPos + 1;
+          }
+        });
+      }
+    }
   }
 
   if (!matches.length) {
@@ -1103,6 +1186,7 @@ function parseInviteEventRowsFromBlock(blockText) {
   const tokens = normalized.split(" ").filter(Boolean);
   const distanceSet = new Set(["25", "50", "100", "200", "400", "500", "800", "1000", "1500"]);
   const isStandaloneNumber = (token) => /^\d{1,3}$/.test(token);
+  const isDistance = (token) => distanceSet.has(token);
   const events = [];
   const seen = new Set();
 
@@ -1167,7 +1251,16 @@ function parseInviteEventRowsFromBlock(blockText) {
     }
 
     const oddNumber = Number(tokens[index]);
-    const nextNumberIndex = tokens.slice(index + 1).findIndex((token) => isStandaloneNumber(token));
+    
+    // Find next non-distance number (the other gender's event number)
+    let nextNumberIndex = -1;
+    for (let i = index + 1; i < tokens.length; i++) {
+      if (isStandaloneNumber(tokens[i]) && !isDistance(tokens[i])) {
+        nextNumberIndex = i - index - 1;
+        break;
+      }
+    }
+    
     if (nextNumberIndex < 0) {
       break;
     }

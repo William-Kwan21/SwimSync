@@ -391,13 +391,18 @@ function renderPublicEventsTable(detail) {
     const cleanEventName = String(eventTitle || "-")
       .replace(/\bEvent\s+\d{1,3}\b\s*/i, "")
       .trim();
-          const standardText = event.qualifying_time_text || "NT";
-          const entryState = Number(event.is_selected) === 1 ? "IN" : "OUT";
-          const entryClass = Number(event.is_selected) === 1 ? "event-entry-in" : "event-entry-out";
-          const tagBits = [event.age_group || "", event.gender || ""].filter(Boolean);
-          const metaBits = [event.distance_meters ? `${event.distance_meters}m` : "", event.stroke || ""]
-            .filter(Boolean)
-            .join(" ");
+    
+    // Prepend gender to event name if available
+    const genderPrefix = event.gender ? `${event.gender} ` : "";
+    const displayEventName = genderPrefix + cleanEventName;
+    
+    const standardText = event.qualifying_time_text || "NT";
+    const entryState = Number(event.is_selected) === 1 ? "IN" : "OUT";
+    const entryClass = Number(event.is_selected) === 1 ? "event-entry-in" : "event-entry-out";
+    const tagBits = [event.age_group || ""].filter(Boolean); // No longer include gender in chips
+    const metaBits = [event.distance_meters ? `${event.distance_meters}m` : "", event.stroke || ""]
+      .filter(Boolean)
+      .join(" ");
 
     rows.push(`
             <tr class="meet-event-row ${Number(event.is_selected) === 1 ? "is-selected" : ""}">
