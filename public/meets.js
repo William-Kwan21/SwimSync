@@ -843,6 +843,21 @@ function uploadFileMultipart(url, filePayload, extraFields = {}) {
   });
 }
 
+function uploadTextMultipart(url, fields) {
+  return apiFetch(url, {
+    method: "POST",
+    body: (() => {
+      const formData = new FormData();
+      Object.entries(fields || {}).forEach(([key, value]) => {
+        if (value != null && String(value).trim() !== "") {
+          formData.append(key, String(value));
+        }
+      });
+      return formData;
+    })(),
+  });
+}
+
 function build413Message(prefix) {
   return `${prefix} failed (413). Upload was blocked before it reached the app. Retry with a smaller file or raise proxy upload limit (nginx client_max_body_size / Apache LimitRequestBody).`;
 }
@@ -890,15 +905,11 @@ meetImportForm.addEventListener("submit", async (event) => {
       );
 
       const extractedText = await extractPdfTextInBrowser(filePayload.file);
-      res = await apiFetch("/api/meets/import", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          content: extractedText,
-          file_type: "text/plain",
-          file_name: "meet-import.txt",
-          encoding: "utf8",
-        }),
+      res = await uploadTextMultipart("/api/meets/import", {
+        content: extractedText,
+        file_type: "text/plain",
+        file_name: "meet-import.txt",
+        encoding: "utf8",
       });
       data = await safeJson(res);
     }
