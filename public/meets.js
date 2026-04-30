@@ -906,19 +906,11 @@ meetImportForm.addEventListener("submit", async (event) => {
 
   try {
     const filePayload = await readSelectedFile(meetImportFile);
-    showState(meetImportStatus, "Uploading PDF...", "info");
+    let res;
+    let data;
 
-    let res = await uploadFileMultipart("/api/meets/import", filePayload);
-    let data = await safeJson(res);
-
-    if (shouldRetryPdfImport(res, data, filePayload)) {
-      showState(
-        meetImportStatus,
-        res.status === 413
-          ? "Upload blocked by server limit. Extracting PDF text and retrying..."
-          : "Server could not parse the PDF. Extracting PDF text and retrying...",
-        "info",
-      );
+    if (isPdfFile(filePayload.file)) {
+      showState(meetImportStatus, "Extracting text from PDF...", "info");
 
       let extractedText;
       try {
@@ -927,19 +919,17 @@ meetImportForm.addEventListener("submit", async (event) => {
         throw new Error(`PDF extraction failed: ${error.message}`);
       }
 
-      showState(meetImportStatus, "Retrying import with extracted PDF text...", "info");
-
-      try {
-        res = await uploadTextMultipart("/api/meets/import", {
-          content: extractedText,
-          file_type: "text/plain",
-          file_name: "meet-import.txt",
-          encoding: "utf8",
-        });
-      } catch (error) {
-        throw new Error(`Retry upload failed: ${error.message}`);
-      }
-
+      showState(meetImportStatus, "Importing extracted PDF text...", "info");
+      res = await uploadTextMultipart("/api/meets/import", {
+        content: extractedText,
+        file_type: "text/plain",
+        file_name: filePayload.file_name || "meet-import.txt",
+        encoding: "utf8",
+      });
+      data = await safeJson(res);
+    } else {
+      showState(meetImportStatus, "Uploading meet file...", "info");
+      res = await uploadFileMultipart("/api/meets/import", filePayload);
       data = await safeJson(res);
     }
 
