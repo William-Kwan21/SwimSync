@@ -905,11 +905,13 @@ meetImportForm.addEventListener("submit", async (event) => {
   btnImportMeet.textContent = "Importing...";
 
   try {
+    let stage = "reading file";
     const filePayload = await readSelectedFile(meetImportFile);
     let res;
     let data;
 
     if (isPdfFile(filePayload.file)) {
+      stage = "extracting PDF text in browser";
       showState(meetImportStatus, "Extracting text from PDF...", "info");
 
       let extractedText;
@@ -919,6 +921,7 @@ meetImportForm.addEventListener("submit", async (event) => {
         throw new Error(`PDF extraction failed: ${error.message}`);
       }
 
+      stage = "sending extracted text to server";
       showState(meetImportStatus, "Importing extracted PDF text...", "info");
       res = await uploadTextMultipart("/api/meets/import", {
         content: extractedText,
@@ -928,15 +931,20 @@ meetImportForm.addEventListener("submit", async (event) => {
       });
       data = await safeJson(res);
     } else {
+      stage = "uploading meet file";
       showState(meetImportStatus, "Uploading meet file...", "info");
       res = await uploadFileMultipart("/api/meets/import", filePayload);
       data = await safeJson(res);
     }
 
     if (!res.ok) {
+      const serverMessage = data && data.message ? String(data.message) : "";
+      const statusDetails = `HTTP ${res.status}${res.statusText ? ` ${res.statusText}` : ""}`;
       throw new Error(
-        (data && data.message) ||
-          (res.status === 413 ? build413Message("Meet import") : `Import failed (${res.status})`),
+        serverMessage ||
+          (res.status === 413
+            ? build413Message("Meet import")
+            : `Import failed during ${stage}: ${statusDetails}`),
       );
     }
 
@@ -944,7 +952,12 @@ meetImportForm.addEventListener("submit", async (event) => {
     meetImportForm.reset();
     await loadMeets();
   } catch (error) {
-    showState(meetImportStatus, `Meet import failed: ${error.message}`, "error");
+    const message =
+      error && typeof error.message === "string" && error.message.trim()
+        ? error.message.trim()
+        : "Unknown error (no message from browser/server)";
+    console.error("Meet import error:", error);
+    showState(meetImportStatus, `Meet import failed: ${message}`, "error");
   } finally {
     btnImportMeet.disabled = false;
     btnImportMeet.textContent = "Import Meet";
