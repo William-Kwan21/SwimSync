@@ -448,6 +448,10 @@ function renderMeetEditForm(detail) {
 }
 
 function renderCoachEventSelection(detail) {
+  if (!coachEventControls || !eventsTbody || !coachSelectionStatus) {
+    return;
+  }
+
   if (!detail.can_select_events) {
     hide(coachEventControls);
     return;
@@ -1199,38 +1203,6 @@ meetsTbody.addEventListener("click", async (event) => {
   const meetId = Number(btn.dataset.openMeet);
   if (Number.isNaN(meetId)) return;
   await loadMeetDetail(meetId);
-});
-
-btnSaveEventSelection.addEventListener("click", async () => {
-  if (!selectedMeetId) return;
-
-  const selectedIds = Array.from(document.querySelectorAll("input[data-event-select]:checked"))
-    .map((el) => Number(el.getAttribute("data-event-select")))
-    .filter((id) => Number.isInteger(id));
-
-  btnSaveEventSelection.disabled = true;
-  btnSaveEventSelection.textContent = "Saving...";
-
-  try {
-    const res = await apiFetch(`/api/meets/${selectedMeetId}/events/selection`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ event_ids: selectedIds }),
-    });
-    const data = await safeJson(res);
-    if (!res.ok) {
-      throw new Error((data && data.message) || `Failed (${res.status})`);
-    }
-
-    showState(coachSelectionStatus, "Selected events saved.", "info");
-    await loadMeets();
-    await loadMeetDetail(selectedMeetId);
-  } catch (error) {
-    showState(coachSelectionStatus, `Save failed: ${error.message}`, "error");
-  } finally {
-    btnSaveEventSelection.disabled = false;
-    btnSaveEventSelection.textContent = "Save Selected Events";
-  }
 });
 
 if (declareControls) {
