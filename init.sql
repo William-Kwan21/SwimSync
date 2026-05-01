@@ -130,7 +130,7 @@ CREATE TABLE IF NOT EXISTS meets (
 CREATE TABLE IF NOT EXISTS meet_events (
   id INT AUTO_INCREMENT PRIMARY KEY,
   meet_id INT NOT NULL,
-  event_name VARCHAR(150) NOT NULL,
+  event_name VARCHAR(500) NOT NULL,
   stroke VARCHAR(40) NULL,
   distance_meters INT NULL,
   age_group VARCHAR(40) NULL,
@@ -168,6 +168,7 @@ CREATE TABLE IF NOT EXISTS meet_days (
   session_label VARCHAR(40) NOT NULL DEFAULT '',
   age_group VARCHAR(40) NULL,
   gender VARCHAR(20) NULL,
+  warmup_time VARCHAR(100) NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT uq_meet_days UNIQUE (meet_id, meet_day, session_label),
   CONSTRAINT fk_meet_days_meet

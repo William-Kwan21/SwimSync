@@ -1140,6 +1140,17 @@ function splitInviteSessionBlocks(content) {
   });
 }
 
+function extractWarmupTimeFromBlock(blockText) {
+  const warmupMatch = String(blockText || "").match(/\bwarm[- ]?up[:\s]+([^\n]*)/i);
+  if (warmupMatch && warmupMatch[1]) {
+    const warmupText = warmupMatch[1].trim();
+    if (warmupText) {
+      return warmupText.slice(0, 100);
+    }
+  }
+  return null;
+}
+
 function parseInviteEventRowsFromBlock(blockText) {
   const rawText = String(blockText || "").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
   const normalized = rawText
@@ -1350,10 +1361,14 @@ function parseInviteSessionEventsFromText(content, options = {}) {
   blocks.forEach((block) => {
     const sessionLabel = `${block.dayName} ${block.sessionLabel}`.trim();
     const sessionAgeGroup = detectSessionAgeGroupFromText(block.text);
+    const warmupTime = extractWarmupTimeFromBlock(block.text);
 
     const dayEntry = pushDay(block.dayName, block.sessionLabel);
     if (dayEntry && sessionAgeGroup && !dayEntry.age_group) {
       dayEntry.age_group = sessionAgeGroup;
+    }
+    if (dayEntry && warmupTime && !dayEntry.warmup_time) {
+      dayEntry.warmup_time = warmupTime;
     }
 
     const eventSessionDate = meetDate
@@ -3154,17 +3169,18 @@ app.post(
           throw new Error("No valid meet days could be derived from the imported file");
         }
 
-        const dayValuesWithSession = normalizedImportDays.map(() => "(?, ?, ?, ?, ?)").join(", ");
+        const dayValuesWithSession = normalizedImportDays.map(() => "(?, ?, ?, ?, ?, ?)").join(", ");
         const dayParams = normalizedImportDays.flatMap((day) => [
           meetId,
           normalizeDateOnly(day.meet_day),
           normalizeSessionLabel(day.session_label),
           day.age_group || null,
           day.gender || null,
+          day.warmup_time || null,
         ]);
 
         await connection.query(
-          `INSERT INTO meet_days (meet_id, meet_day, session_label, age_group, gender) VALUES ${dayValuesWithSession}`,
+          `INSERT INTO meet_days (meet_id, meet_day, session_label, age_group, gender, warmup_time) VALUES ${dayValuesWithSession}`,
           dayParams,
         );
       }
