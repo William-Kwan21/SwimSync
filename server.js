@@ -1058,110 +1058,80 @@ function splitInviteSessionBlocks(content) {
     .replace(/\r/g, "\n")
     .replace(/[ \t]+/g, " ");
 
-  // Try Pattern 1: "Friday AM Session" style
-  let headingRegex = /\b(Friday|Saturday|Sunday)\s+(?:AM|PM|MID(?:-?DAY)?|AFTERNOON|MORNING)\s+Session\b/gi;
-  let matches = [];
-  let match;
-
-  while ((match = headingRegex.exec(text))) {
-    const headingText = match[0];
-    const labelMatch = headingText.match(/\b(AM|PM|MID(?:-?DAY)?|AFTERNOON|MORNING)\b/i);
+  const matches = [];
+  const addMatch = (index, dayName, length, sessionLabelRaw) => {
     matches.push({
-      index: match.index,
-      dayName: match[1],
-      length: headingText.length,
-      sessionLabel: normalizeInviteSessionPeriod(labelMatch ? labelMatch[1] : ""),
+      index,
+      dayName,
+      length,
+      sessionLabel: normalizeInviteSessionPeriod(sessionLabelRaw),
     });
+  };
+
+  // Pattern 1: "Friday AM Session"
+  const headingRegex = /\b(Friday|Saturday|Sunday)\s+(AM|PM|MID(?:-?DAY)?|AFTERNOON|MORNING)\s+Session\b/gi;
+  let match;
+  while ((match = headingRegex.exec(text))) {
+    addMatch(match.index, match[1], match[0].length, match[2]);
   }
 
-  // If Pattern 1 didn't work, try Pattern 2: "Start: TIME" followed by day info
+  // Pattern 2: "Session 3: Saturday MID"
+  const summaryRegex = /\bSession\s*\d+\s*:\s*(Friday|Saturday|Sunday)\s*(AM|PM|MID(?:-?DAY)?|AFTERNOON|MORNING)?\b/gi;
+  while ((match = summaryRegex.exec(text))) {
+    addMatch(match.index, match[1], match[0].length, match[2] || "");
+  }
+
+  // Pattern 3: fallback for flattened text with repeated "Start: HH:MM AM/PM"
   if (!matches.length) {
+    const dayMentions = [];
+    const dayRegexGlobal = /\b(Friday|Saturday|Sunday)\b/gi;
+    while ((match = dayRegexGlobal.exec(text))) {
+      dayMentions.push({ index: match.index, dayName: match[1] });
+    }
+
+    const resolveDayAtIndex = (idx) => {
+      let day = "Saturday";
+      for (const mention of dayMentions) {
+        if (mention.index <= idx) {
+          day = mention.dayName;
+        } else {
+          break;
+        }
+      }
+      return day;
+    };
+
     const startRegex = /\bStart\s*:\s*(\d{1,2}):(\d{2})\s*(AM|PM)\b/gi;
-    const dayRegex = /\b(Friday|Saturday|Sunday)\b/i;
-    
-    let currentDay = "Saturday"; // Default day
-    let startMatch;
-    
-    // First pass: identify sections with "Start:" lines
-    const lines = text.split("\n");
-    const sections = [];
-    let currentSection = null;
-    
-    lines.forEach((line, idx) => {
-      // Update day context from any line that mentions a day
-      const dayMatch = line.match(dayRegex);
-      if (dayMatch) {
-        currentDay = dayMatch[1];
-      }
-      
-      const timeMatch = line.match(/\bStart\s*:\s*(\d{1,2}):(\d{2})\s*(AM|PM)\b/i);
-      if (timeMatch) {
-        if (currentSection) {
-          sections.push(currentSection);
-        }
-        const timeStr = `${timeMatch[1]}:${timeMatch[2]} ${timeMatch[3]}`;
-        currentSection = {
-          dayName: currentDay,
-          timeStr: timeStr,
-          sessionLabel: timeMatch[3] === "AM" ? "AM" : (parseInt(timeMatch[1]) < 12 ? "MORNING" : "AFTERNOON"),
-          startLineIdx: idx,
-          lines: [line],
-        };
-      } else if (currentSection) {
-        currentSection.lines.push(line);
-      }
-    });
-    
-    if (currentSection) {
-      sections.push(currentSection);
-    }
-    
-    // Convert sections to matches format
-    if (sections.length > 0) {
-      let charIndex = 0;
-      matches = [];
-      
-      sections.forEach((section, idx) => {
-        // Find the position of this section's start line in original text
-        const searchStr = section.lines[0];
-        const foundIdx = text.indexOf(searchStr, charIndex);
-        
-        if (foundIdx !== -1) {
-          matches.push({
-            index: foundIdx,
-            dayName: section.dayName,
-            length: 0,
-            sessionLabel: section.sessionLabel,
-          });
-          charIndex = foundIdx + searchStr.length;
-        }
-      });
-      
-      // If that didn't work, build it differently
-      if (matches.length === 0 && sections.length > 0) {
-        let textPos = 0;
-        sections.forEach((section) => {
-          const startPos = text.indexOf(section.lines[0], textPos);
-          if (startPos !== -1) {
-            matches.push({
-              index: startPos,
-              dayName: section.dayName,
-              length: 0,
-              sessionLabel: section.sessionLabel,
-            });
-            textPos = startPos + 1;
-          }
-        });
-      }
+    while ((match = startRegex.exec(text))) {
+      const dayName = resolveDayAtIndex(match.index);
+      addMatch(match.index, dayName, match[0].length, match[3]);
     }
   }
 
-  if (!matches.length) {
+  if (matches.length > 1) {
+    matches.sort((a, b) => a.index - b.index);
+  }
+
+  const deduped = [];
+  for (const item of matches) {
+    const prev = deduped[deduped.length - 1];
+    if (
+      prev &&
+      prev.index === item.index &&
+      prev.dayName === item.dayName &&
+      prev.sessionLabel === item.sessionLabel
+    ) {
+      continue;
+    }
+    deduped.push(item);
+  }
+
+  if (!deduped.length) {
     return [];
   }
 
-  return matches.map((current, index) => {
-    const next = matches[index + 1];
+  return deduped.map((current, index) => {
+    const next = deduped[index + 1];
     return {
       dayName: current.dayName,
       sessionLabel: current.sessionLabel,
@@ -3740,20 +3710,26 @@ app.put(
 
           const meetDay = normalizeDateOnly(entry.meet_day || entry.day);
           const sessionLabel = normalizeSessionLabel(entry.session_label || "");
-          const sessionKey = `${meetDay || ""}|${sessionLabel}`;
-          const sessionRow = meetDayMap.get(sessionKey);
-          if (!meetDay || !sessionRow) {
-            await connection.rollback();
-            return res.status(400).json({
-              message: `Invalid meet day/session: ${entry.meet_day} ${sessionLabel}`,
-            });
+
+          let sessionRowsForEntry = [];
+          if (meetDay && sessionLabel) {
+            const sessionKey = `${meetDay}|${sessionLabel}`;
+            const sessionRow = meetDayMap.get(sessionKey);
+            if (sessionRow) {
+              sessionRowsForEntry = [sessionRow];
+            }
+          } else if (meetDay) {
+            sessionRowsForEntry = meetDayRows.filter(
+              (row) => String(row.meet_day).slice(0, 10) === meetDay,
+            );
           }
 
-          const swimmer = swimmerById.get(swimmerId);
-          const allowedForSession =
-            swimmer &&
-            genderMatches(sessionRow.gender, swimmer.gender) &&
-            ageMatches(sessionRow.age_group, swimmer.date_of_birth, meetDay);
+          if (!meetDay || !sessionRowsForEntry.length) {
+            await connection.rollback();
+            return res.status(400).json({
+              message: `Invalid meet day/session: ${entry.meet_day || entry.day || ""} ${sessionLabel}`,
+            });
+          }
 
           const status = String(entry.status || "").trim().toLowerCase();
           if (!validStatuses.has(status)) {
@@ -3763,27 +3739,44 @@ app.put(
               .json({ message: `Invalid status: ${entry.status}` });
           }
 
-          if (status === "yes" && !allowedForSession) {
-            await connection.rollback();
-            return res.status(400).json({
-              message: `Swimmer is not eligible for session declaration: ${entry.swimmer_id}`,
-            });
-          }
-
           const note =
             typeof entry.note === "string" ? entry.note.trim() : null;
 
-          await connection.query(
-            `INSERT INTO meet_declarations
-               (meet_id, swimmer_id, meet_day, session_label, status, note, declared_by_user_id)
-             VALUES (?, ?, ?, ?, ?, ?, ?)
-             ON DUPLICATE KEY UPDATE
-               status = VALUES(status),
-               note = VALUES(note),
-               declared_by_user_id = VALUES(declared_by_user_id),
-               updated_at = CURRENT_TIMESTAMP`,
-            [meetId, swimmerId, meetDay, sessionLabel, status, note || null, req.user.sub],
-          );
+          const swimmer = swimmerById.get(swimmerId);
+          for (const sessionRow of sessionRowsForEntry) {
+            const resolvedSessionLabel = normalizeSessionLabel(sessionRow.session_label || "");
+            const allowedForSession =
+              swimmer &&
+              genderMatches(sessionRow.gender, swimmer.gender) &&
+              ageMatches(sessionRow.age_group, swimmer.date_of_birth, meetDay);
+
+            if (status === "yes" && !allowedForSession) {
+              await connection.rollback();
+              return res.status(400).json({
+                message: `Swimmer is not eligible for session declaration: ${entry.swimmer_id}`,
+              });
+            }
+
+            await connection.query(
+              `INSERT INTO meet_declarations
+                 (meet_id, swimmer_id, meet_day, session_label, status, note, declared_by_user_id)
+               VALUES (?, ?, ?, ?, ?, ?, ?)
+               ON DUPLICATE KEY UPDATE
+                 status = VALUES(status),
+                 note = VALUES(note),
+                 declared_by_user_id = VALUES(declared_by_user_id),
+                 updated_at = CURRENT_TIMESTAMP`,
+              [
+                meetId,
+                swimmerId,
+                meetDay,
+                resolvedSessionLabel,
+                status,
+                note || null,
+                req.user.sub,
+              ],
+            );
+          }
         }
 
         await connection.commit();

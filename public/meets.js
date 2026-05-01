@@ -508,8 +508,8 @@ function renderDeclarationTable(detail) {
     const sessionRows = dayValues
       .map((dayInfo, index) => {
         const key = declarationSessionKey(swimmer.swimmer_id, dayInfo.meet_day, dayInfo.session_label);
-        const existing = declarationMap.get(key) || { status: "maybe" };
-        const statusValue = existing.status === "yes" || existing.status === "no" ? existing.status : "maybe";
+        const existing = declarationMap.get(key) || { status: "no" };
+        const statusValue = existing.status === "yes" ? "yes" : "no";
         const sessionName = dayInfo.session_label || `Session ${index + 1}`;
         const heading = `${sessionName} • ${formatDate(dayInfo.meet_day)}`;
         const ruleBits = [dayInfo.age_group || "", dayInfo.gender || ""].filter(Boolean).join(" • ");
