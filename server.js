@@ -1171,11 +1171,12 @@ function splitInviteSessionBlocks(content) {
 }
 
 function parseInviteEventRowsFromBlock(blockText) {
-  const normalized = String(blockText || "")
+  const rawText = String(blockText || "").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+  const normalized = rawText
     .replace(/\bGirls\s+Event\s+Boys\b/gi, " ")
     .replace(/\bGirls\s+Event\b|\bBoys\b/gi, " ")
-    .replace(/\bwarm[- ]?up:.*$/gi, " ")
-    .replace(/\bstart:.*$/gi, " ")
+    .replace(/\bwarm[- ]?up:.*$/gim, " ")
+    .replace(/\bstart:.*$/gim, " ")
     .replace(/\b15\s*minute\s*break\b/gi, " ")
     .replace(/\*+/g, " ")
     .replace(/[\u2022•·]/g, " ")
@@ -1242,6 +1243,59 @@ function parseInviteEventRowsFromBlock(blockText) {
       is_selected: events.length < 4,
     });
   };
+
+  // First pass: parse line-oriented rows from table text.
+  const lines = rawText
+    .split("\n")
+    .map((line) =>
+      String(line || "")
+        .replace(/\*+/g, " ")
+        .replace(/[\u2022•·]/g, " ")
+        .replace(/[–—]/g, "-")
+        .replace(/\s+/g, " ")
+        .trim(),
+    )
+    .filter(Boolean);
+
+  for (const line of lines) {
+    if (
+      /\b(girls\s+event\s+boys|order\s+of\s+events|session\s*\d+|warm[- ]?up|start:)\b/i.test(
+        line,
+      )
+    ) {
+      continue;
+    }
+
+    const rowMatch = line.match(/^(\d{1,3})\s+(.+?)\s+(\d{1,3})$/);
+    if (rowMatch) {
+      const girlsEventNum = Number(rowMatch[1]);
+      const descriptor = String(rowMatch[2] || "").trim();
+      const boysEventNum = Number(rowMatch[3]);
+      pushEvent(girlsEventNum, descriptor, "female");
+      pushEvent(boysEventNum, descriptor, "male");
+      continue;
+    }
+
+    const explicitEventRowMatch = line.match(
+      /^event\s*#?\s*(\d{1,3})\s+(.+?)\s+event\s*#?\s*(\d{1,3})$/i,
+    );
+    if (explicitEventRowMatch) {
+      const firstNum = Number(explicitEventRowMatch[1]);
+      const descriptor = String(explicitEventRowMatch[2] || "").trim();
+      const secondNum = Number(explicitEventRowMatch[3]);
+      if (firstNum % 2 === 1) {
+        pushEvent(firstNum, descriptor, "female");
+        pushEvent(secondNum, descriptor, "male");
+      } else {
+        pushEvent(firstNum, descriptor, "male");
+        pushEvent(secondNum, descriptor, "female");
+      }
+    }
+  }
+
+  if (events.length) {
+    return events;
+  }
 
   let index = 0;
   while (index < tokens.length) {
@@ -1731,7 +1785,7 @@ async function getMeetEligibilityForSwimmers(meetId, swimmerIds, meetDate = null
     return rows;
   })();
 
-  const selectedEvents = eventRows.filter((event) => Number(event.is_selected) === 1);
+  const selectedEvents = eventRows;
 
   const eligibilityBySwimmerId = new Map();
 
@@ -1744,26 +1798,9 @@ async function getMeetEligibilityForSwimmers(meetId, swimmerIds, meetDate = null
   }
 
   const swimmers = await getSwimmerRowsByIds(swimmerIds);
-  const [timeRows] = await pool.query(
-    `SELECT swimmer_id, stroke, distance_meters, best_time_seconds
-     FROM swimmer_best_times
-     WHERE swimmer_id IN (${swimmerIds.map(() => "?").join(",")})`,
-    swimmerIds,
-  );
-
-  const timesBySwimmer = new Map();
-  timeRows.forEach((row) => {
-    const swimmerId = Number(row.swimmer_id);
-    if (!timesBySwimmer.has(swimmerId)) {
-      timesBySwimmer.set(swimmerId, new Map());
-    }
-    const key = `${normalizeStroke(row.stroke)}|${Number(row.distance_meters) || 0}`;
-    timesBySwimmer.get(swimmerId).set(key, Number(row.best_time_seconds));
-  });
 
   swimmers.forEach((swimmer) => {
     const swimmerId = Number(swimmer.swimmer_id);
-    const swimmerTimes = timesBySwimmer.get(swimmerId) || new Map();
     const eligibleEventIds = [];
 
     selectedEvents.forEach((event) => {
@@ -1775,27 +1812,7 @@ async function getMeetEligibilityForSwimmers(meetId, swimmerIds, meetDate = null
         return;
       }
 
-      const hasStandard =
-        event.qualifying_time_seconds != null &&
-        Number.isFinite(Number(event.qualifying_time_seconds));
-
-      if (!hasStandard) {
-        eligibleEventIds.push(Number(event.id));
-        return;
-      }
-
-      const distance = Number(event.distance_meters);
-      const stroke = normalizeStroke(event.stroke);
-      if (!distance || !stroke) {
-        return;
-      }
-
-      const key = `${stroke}|${distance}`;
-      const best = swimmerTimes.get(key);
-      const standard = Number(event.qualifying_time_seconds);
-      if (Number.isFinite(best) && best <= standard) {
-        eligibleEventIds.push(Number(event.id));
-      }
+      eligibleEventIds.push(Number(event.id));
     });
 
     eligibilityBySwimmerId.set(swimmerId, {
@@ -3721,7 +3738,7 @@ app.put(
             });
           }
 
-          const meetDay = normalizeDateOnly(entry.meet_day);
+          const meetDay = normalizeDateOnly(entry.meet_day || entry.day);
           const sessionLabel = normalizeSessionLabel(entry.session_label || "");
           const sessionKey = `${meetDay || ""}|${sessionLabel}`;
           const sessionRow = meetDayMap.get(sessionKey);
@@ -3738,19 +3755,19 @@ app.put(
             genderMatches(sessionRow.gender, swimmer.gender) &&
             ageMatches(sessionRow.age_group, swimmer.date_of_birth, meetDay);
 
-          if (!allowedForSession) {
-            await connection.rollback();
-            return res.status(400).json({
-              message: `Swimmer is not eligible for session declaration: ${entry.swimmer_id}`,
-            });
-          }
-
           const status = String(entry.status || "").trim().toLowerCase();
           if (!validStatuses.has(status)) {
             await connection.rollback();
             return res
               .status(400)
               .json({ message: `Invalid status: ${entry.status}` });
+          }
+
+          if (status === "yes" && !allowedForSession) {
+            await connection.rollback();
+            return res.status(400).json({
+              message: `Swimmer is not eligible for session declaration: ${entry.swimmer_id}`,
+            });
           }
 
           const note =
@@ -3812,12 +3829,10 @@ app.put(
       }
 
       const [eventRows] = await pool.query(
-        "SELECT id, is_selected FROM meet_events WHERE meet_id = ?",
+        "SELECT id FROM meet_events WHERE meet_id = ?",
         [meetId],
       );
-      const selectedEventIds = new Set(
-        eventRows.filter((row) => Number(row.is_selected) === 1).map((row) => Number(row.id)),
-      );
+      const meetEventIds = new Set(eventRows.map((row) => Number(row.id)));
 
       const [declaredRows] = await pool.query(
         `SELECT DISTINCT swimmer_id
@@ -3858,10 +3873,10 @@ app.put(
 
           const eligibleSet = eligibleBySwimmerId.get(swimmerId) || new Set();
           for (const eventId of eventIds) {
-            if (!selectedEventIds.has(eventId)) {
+            if (!meetEventIds.has(eventId)) {
               await connection.rollback();
               return res.status(400).json({
-                message: `Event is not selected for meet: ${eventId}`,
+                message: `Event does not belong to this meet: ${eventId}`,
               });
             }
             if (!eligibleSet.has(eventId)) {

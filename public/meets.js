@@ -258,7 +258,6 @@ function renderMeetRow(meet) {
     <td>${formatDate(meet.meet_date)}</td>
     <td>${escHtml(meet.location || "-")}</td>
     <td>${Number(meet.event_count) || 0}</td>
-    <td>${Number(meet.selected_event_count) || 0}</td>
     <td>${actionButtons}</td>
   `;
   return tr;
@@ -316,9 +315,6 @@ function renderMeetOverview(detail) {
   const meet = detail && detail.meet ? detail.meet : {};
   const dayCount = Array.isArray(detail && detail.days) ? detail.days.length : 0;
   const eventCount = Array.isArray(detail && detail.events) ? detail.events.length : 0;
-  const selectedCount = Array.isArray(detail && detail.events)
-    ? detail.events.filter((event) => Number(event.is_selected) === 1).length
-    : 0;
 
   meetOverview.innerHTML = `
     <div>
@@ -343,7 +339,7 @@ function renderMeetOverview(detail) {
     </div>
     <div>
       <p class="summary-label">Events</p>
-      <p class="summary-value">${eventCount} total, ${selectedCount} selected</p>
+      <p class="summary-value">${eventCount} total</p>
     </div>
   `;
 }
@@ -397,22 +393,22 @@ function renderPublicEventsTable(detail) {
     const displayEventName = genderPrefix + cleanEventName;
     
     const standardText = event.qualifying_time_text || "NT";
-    const entryState = Number(event.is_selected) === 1 ? "IN" : "OUT";
-    const entryClass = Number(event.is_selected) === 1 ? "event-entry-in" : "event-entry-out";
+    const entryState = "OPEN";
+    const entryClass = "event-entry-in";
     const tagBits = [event.age_group || ""].filter(Boolean); // No longer include gender in chips
     const metaBits = [event.distance_meters ? `${event.distance_meters}m` : "", event.stroke || ""]
       .filter(Boolean)
       .join(" ");
 
     rows.push(`
-            <tr class="meet-event-row ${Number(event.is_selected) === 1 ? "is-selected" : ""}">
+            <tr class="meet-event-row">
               <td>
                 <span class="event-entry-pill ${entryClass}">${entryState}</span>
               </td>
               <td>
                 <div class="event-main-line">
                   <span class="event-number-pill">#${escHtml(eventNumber)}</span>
-                  <span class="event-title-text">${escHtml(cleanEventName || eventTitle || "-")}</span>
+                  <span class="event-title-text">${escHtml(displayEventName || cleanEventName || eventTitle || "-")}</span>
                 </div>
                 <div class="event-sub-line">${escHtml(metaBits || "Distance and stroke pending")}</div>
               </td>
@@ -493,14 +489,6 @@ function renderDeclarationTable(detail) {
     gender: row.gender || "",
   }));
   const declarationMap = new Map();
-  const declarationEligibility = new Map();
-
-  (detail.declaration_eligibility || []).forEach((entry) => {
-    declarationEligibility.set(
-      declarationSessionKey(entry.swimmer_id, entry.meet_day, entry.session_label),
-      !!entry.allowed,
-    );
-  });
 
   (detail.declarations || []).forEach((entry) => {
     declarationMap.set(
@@ -513,16 +501,11 @@ function renderDeclarationTable(detail) {
 
   const cards = [];
   (detail.swimmers || []).forEach((swimmer) => {
-    const eligibleDayValues = dayValues.filter((dayInfo) => {
-      const key = declarationSessionKey(swimmer.swimmer_id, dayInfo.meet_day, dayInfo.session_label);
-      return declarationEligibility.has(key) ? declarationEligibility.get(key) : true;
-    });
-
-    if (!eligibleDayValues.length) {
+    if (!dayValues.length) {
       return;
     }
 
-    const sessionRows = eligibleDayValues
+    const sessionRows = dayValues
       .map((dayInfo, index) => {
         const key = declarationSessionKey(swimmer.swimmer_id, dayInfo.meet_day, dayInfo.session_label);
         const existing = declarationMap.get(key) || { status: "maybe" };
@@ -573,7 +556,7 @@ function renderCoachEntryTable(detail) {
       .map((row) => Number(row.swimmer_id)),
   );
 
-  const selectedEvents = (detail.events || []).filter((event) => Number(event.is_selected) === 1);
+  const allMeetEvents = detail.events || [];
   const eligibilityBySwimmer = new Map(
     (detail.eligibility || []).map((row) => [
       Number(row.swimmer_id),
@@ -591,7 +574,7 @@ function renderCoachEntryTable(detail) {
       return;
     }
 
-    const eligibleEvents = selectedEvents.filter((event) => {
+    const eligibleEvents = allMeetEvents.filter((event) => {
       const eligibleSet = eligibilityBySwimmer.get(swimmerId) || new Set();
       return eligibleSet.has(Number(event.id));
     });
@@ -605,7 +588,7 @@ function renderCoachEntryTable(detail) {
             return `<label class="checkbox-row" style="margin:0 0 0.35rem 0;"><input type="checkbox" data-entry-swimmer="${swimmerId}" data-entry-event="${event.id}" ${checked} /><span>${escHtml(displayName)}</span></label>`;
           })
           .join("")
-      : '<span class="muted-inline">No eligible selected events.</span>';
+          : '<span class="muted-inline">No eligible events for this swimmer.</span>';
 
     rows.push(`
       <tr data-entry-swimmer-row="${swimmerId}">
@@ -638,7 +621,6 @@ async function loadMeetDetail(meetId) {
     renderMeetEditForm(detail);
     renderMeetDays(detail.days || []);
     renderPublicEventsTable(detail);
-    renderCoachEventSelection(detail);
     renderDeclarationTable(detail);
     renderCoachEntryTable(detail);
 
@@ -1242,39 +1224,6 @@ if (declareControls) {
   });
 }
 
-if (btnSaveEventSelection) {
-  btnSaveEventSelection.addEventListener("click", async () => {
-    if (!selectedMeetId) return;
-
-    const selectedIds = Array.from(document.querySelectorAll("input[data-event-select]:checked"))
-      .map((el) => Number(el.getAttribute("data-event-select")))
-      .filter((id) => Number.isInteger(id));
-
-    btnSaveEventSelection.disabled = true;
-    btnSaveEventSelection.textContent = "Saving...";
-
-    try {
-      const res = await apiFetch(`/api/meets/${selectedMeetId}/events/selection`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ event_ids: selectedIds }),
-      });
-      const data = await safeJson(res);
-      if (!res.ok) {
-        throw new Error((data && data.message) || `Failed (${res.status})`);
-      }
-
-      showState(coachSelectionStatus, "Selected events saved.", "info");
-      await loadMeetDetail(selectedMeetId);
-    } catch (error) {
-      showState(coachSelectionStatus, `Failed to save selected events: ${error.message}`, "error");
-    } finally {
-      btnSaveEventSelection.disabled = false;
-      btnSaveEventSelection.textContent = "Save Selected Events";
-    }
-  });
-}
-
 if (btnSaveDeclarations) {
   btnSaveDeclarations.addEventListener("click", async () => {
     if (!selectedMeetId) return;
@@ -1282,11 +1231,11 @@ if (btnSaveDeclarations) {
     const declarations = Array.from(declareTbody.querySelectorAll("input[data-declare-status]"))
       .map((input) => ({
         swimmer_id: Number(input.getAttribute("data-declare-status")),
-        day: String(input.getAttribute("data-day") || ""),
+        meet_day: String(input.getAttribute("data-day") || ""),
         session_label: String(input.getAttribute("data-session-label") || ""),
         status: String(input.value || "").toLowerCase(),
       }))
-      .filter((item) => Number.isInteger(item.swimmer_id) && item.day && item.session_label);
+      .filter((item) => Number.isInteger(item.swimmer_id) && item.meet_day);
 
     btnSaveDeclarations.disabled = true;
     btnSaveDeclarations.textContent = "Saving...";
