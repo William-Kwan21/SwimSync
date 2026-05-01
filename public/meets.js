@@ -1270,50 +1270,76 @@ if (declareControls) {
   });
 }
 
-btnSaveDeclarations.addEventListener("click", async () => {
-  if (!selectedMeetId || !selectedMeetDetail) return;
+if (btnSaveEventSelection) {
+  btnSaveEventSelection.addEventListener("click", async () => {
+    if (!selectedMeetId) return;
 
-  const declarations = [];
-  const statusEls = Array.from(declareTbody.querySelectorAll("input[data-declare-status]"));
+    const selectedIds = Array.from(document.querySelectorAll("input[data-event-select]:checked"))
+      .map((el) => Number(el.getAttribute("data-event-select")))
+      .filter((id) => Number.isInteger(id));
 
-  statusEls.forEach((statusEl) => {
-    const swimmerId = Number(statusEl.getAttribute("data-declare-status"));
-    const day = String(statusEl.getAttribute("data-day") || "");
-    const sessionLabel = String(statusEl.getAttribute("data-session-label") || "");
+    btnSaveEventSelection.disabled = true;
+    btnSaveEventSelection.textContent = "Saving...";
 
-    declarations.push({
-      swimmer_id: swimmerId,
-      meet_day: day,
-      session_label: sessionLabel,
-      status: statusEl.value,
-      note: "",
-    });
-  });
+    try {
+      const res = await apiFetch(`/api/meets/${selectedMeetId}/events/selection`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ event_ids: selectedIds }),
+      });
+      const data = await safeJson(res);
+      if (!res.ok) {
+        throw new Error((data && data.message) || `Failed (${res.status})`);
+      }
 
-  btnSaveDeclarations.disabled = true;
-  btnSaveDeclarations.textContent = "Saving...";
-
-  try {
-    const res = await apiFetch(`/api/meets/${selectedMeetId}/declarations`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ declarations }),
-    });
-
-    const data = await safeJson(res);
-    if (!res.ok) {
-      throw new Error((data && data.message) || `Failed (${res.status})`);
+      showState(coachSelectionStatus, "Selected events saved.", "info");
+      await loadMeetDetail(selectedMeetId);
+    } catch (error) {
+      showState(coachSelectionStatus, `Failed to save selected events: ${error.message}`, "error");
+    } finally {
+      btnSaveEventSelection.disabled = false;
+      btnSaveEventSelection.textContent = "Save Selected Events";
     }
+  });
+}
 
-    showState(declareStatus, "Declarations saved.", "info");
-    await loadMeetDetail(selectedMeetId);
-  } catch (error) {
-    showState(declareStatus, `Save failed: ${error.message}`, "error");
-  } finally {
-    btnSaveDeclarations.disabled = false;
-    btnSaveDeclarations.textContent = "Save Declarations";
-  }
-});
+if (btnSaveDeclarations) {
+  btnSaveDeclarations.addEventListener("click", async () => {
+    if (!selectedMeetId) return;
+
+    const declarations = Array.from(declareTbody.querySelectorAll("input[data-declare-status]"))
+      .map((input) => ({
+        swimmer_id: Number(input.getAttribute("data-declare-status")),
+        day: String(input.getAttribute("data-day") || ""),
+        session_label: String(input.getAttribute("data-session-label") || ""),
+        status: String(input.value || "").toLowerCase(),
+      }))
+      .filter((item) => Number.isInteger(item.swimmer_id) && item.day && item.session_label);
+
+    btnSaveDeclarations.disabled = true;
+    btnSaveDeclarations.textContent = "Saving...";
+
+    try {
+      const res = await apiFetch(`/api/meets/${selectedMeetId}/declarations`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ declarations }),
+      });
+      const data = await safeJson(res);
+      if (!res.ok) {
+        throw new Error((data && data.message) || `Failed (${res.status})`);
+      }
+
+      showState(declareStatus, "Declarations saved.", "info");
+      await loadMeetDetail(selectedMeetId);
+    } catch (error) {
+      showState(declareStatus, `Save failed: ${error.message}`, "error");
+    } finally {
+      btnSaveDeclarations.disabled = false;
+      btnSaveDeclarations.textContent = "Save Declarations";
+    }
+  });
+}
 
 btnRefreshMeets.addEventListener("click", loadMeets);
 btnLogout.addEventListener("click", redirectToLogin);
