@@ -1391,7 +1391,7 @@ function parseInviteSessionEventsFromText(content, options = {}) {
 
     const blockEvents = parseInviteEventRowsFromBlock(block.text).map((event) => ({
       ...event,
-      event_name: limitTextLength(`${eventSessionTag} ${event.event_name}`, 500),
+      event_name: limitTextLength(event.event_name, 150),
     }));
 
     events.push(...blockEvents);
