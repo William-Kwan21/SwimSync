@@ -563,7 +563,7 @@ async function extractImportPayload(req) {
   if (contentType.includes("multipart/form-data")) {
     const multipart = await parseMultipartUpload(req);
     const fileBuffer = multipart.file;
-    const fileName = multipart.fileName || "";
+    const fileName = multipart.fileName || multipart.fields.file_name || multipart.fields.filename || "";
     const defaultSwimmerId = multipart.fields.default_swimmer_id
       ? Number(multipart.fields.default_swimmer_id)
       : 0;
@@ -1093,30 +1093,28 @@ function splitInviteSessionBlocks(content) {
   }
 
   // Pattern 3: fallback for flattened text with repeated "Start: HH:MM AM/PM"
-  if (!matches.length) {
-    const dayMentions = [];
-    const dayRegexGlobal = /\b(Friday|Saturday|Sunday)\b/gi;
-    while ((match = dayRegexGlobal.exec(text))) {
-      dayMentions.push({ index: match.index, dayName: match[1] });
-    }
+  const dayMentions = [];
+  const dayRegexGlobal = /\b(Friday|Saturday|Sunday)\b/gi;
+  while ((match = dayRegexGlobal.exec(text))) {
+    dayMentions.push({ index: match.index, dayName: match[1] });
+  }
 
-    const resolveDayAtIndex = (idx) => {
-      let day = "Saturday";
-      for (const mention of dayMentions) {
-        if (mention.index <= idx) {
-          day = mention.dayName;
-        } else {
-          break;
-        }
+  const resolveDayAtIndex = (idx) => {
+    let day = dayMentions.length ? dayMentions[0].dayName : "Saturday";
+    for (const mention of dayMentions) {
+      if (mention.index <= idx) {
+        day = mention.dayName;
+      } else {
+        break;
       }
-      return day;
-    };
-
-    const startRegex = /\bStart\s*:\s*(\d{1,2}):(\d{2})\s*(AM|PM)\b/gi;
-    while ((match = startRegex.exec(text))) {
-      const dayName = resolveDayAtIndex(match.index);
-      addMatch(match.index, dayName, match[0].length, match[3]);
     }
+    return day;
+  };
+
+  const startRegex = /\bStart\s*:\s*(\d{1,2}):(\d{2})\s*(AM|PM)\b/gi;
+  while ((match = startRegex.exec(text))) {
+    const dayName = resolveDayAtIndex(match.index);
+    addMatch(match.index, dayName, match[0].length, match[3]);
   }
 
   if (matches.length > 1) {
@@ -3710,7 +3708,7 @@ app.put(
       );
       const meetDayMap = new Map(
         meetDayRows.map((row) => [
-          `${String(row.meet_day).slice(0, 10)}|${normalizeSessionLabel(row.session_label)}`,
+          `${normalizeDateOnly(row.meet_day)}|${normalizeSessionLabel(row.session_label)}`,
           row,
         ]),
       );
@@ -3768,7 +3766,7 @@ app.put(
             }
           } else if (meetDay) {
             sessionRowsForEntry = meetDayRows.filter(
-              (row) => String(row.meet_day).slice(0, 10) === meetDay,
+              (row) => normalizeDateOnly(row.meet_day) === meetDay,
             );
           }
 
