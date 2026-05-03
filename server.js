@@ -14,7 +14,7 @@ const dbConfig = {
   host: process.env.MYSQL_HOST || "127.0.0.1",
   port: Number(process.env.MYSQL_PORT || 3306),
   user: process.env.MYSQL_USER || "root",
-  password: process.env.MYSQL_PASSWORD || "",
+  password: process.env.MYSQL_PASSWORD || "password",
   database: process.env.MYSQL_DATABASE || "hello_db",
 };
 
@@ -3169,20 +3169,41 @@ app.post(
           throw new Error("No valid meet days could be derived from the imported file");
         }
 
-        const dayValuesWithSession = normalizedImportDays.map(() => "(?, ?, ?, ?, ?, ?)").join(", ");
-        const dayParams = normalizedImportDays.flatMap((day) => [
-          meetId,
-          normalizeDateOnly(day.meet_day),
-          normalizeSessionLabel(day.session_label),
-          day.age_group || null,
-          day.gender || null,
-          day.warmup_time || null,
-        ]);
-
-        await connection.query(
-          `INSERT INTO meet_days (meet_id, meet_day, session_label, age_group, gender, warmup_time) VALUES ${dayValuesWithSession}`,
-          dayParams,
+        const [warmupColumnRows] = await connection.query(
+          "SHOW COLUMNS FROM meet_days LIKE 'warmup_time'",
         );
+        const hasWarmupTimeColumn = Array.isArray(warmupColumnRows) && warmupColumnRows.length > 0;
+
+        if (hasWarmupTimeColumn) {
+          const dayValuesWithSession = normalizedImportDays.map(() => "(?, ?, ?, ?, ?, ?)").join(", ");
+          const dayParams = normalizedImportDays.flatMap((day) => [
+            meetId,
+            normalizeDateOnly(day.meet_day),
+            normalizeSessionLabel(day.session_label),
+            day.age_group || null,
+            day.gender || null,
+            day.warmup_time || null,
+          ]);
+
+          await connection.query(
+            `INSERT INTO meet_days (meet_id, meet_day, session_label, age_group, gender, warmup_time) VALUES ${dayValuesWithSession}`,
+            dayParams,
+          );
+        } else {
+          const dayValuesWithSession = normalizedImportDays.map(() => "(?, ?, ?, ?, ?)").join(", ");
+          const dayParams = normalizedImportDays.flatMap((day) => [
+            meetId,
+            normalizeDateOnly(day.meet_day),
+            normalizeSessionLabel(day.session_label),
+            day.age_group || null,
+            day.gender || null,
+          ]);
+
+          await connection.query(
+            `INSERT INTO meet_days (meet_id, meet_day, session_label, age_group, gender) VALUES ${dayValuesWithSession}`,
+            dayParams,
+          );
+        }
       }
 
       if (parsedMeet.events.length) {
