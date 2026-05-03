@@ -1003,6 +1003,17 @@ function buildEventName(eventNumber, nameText) {
   return `Event ${eventNumber} ${clean}`;
 }
 
+function limitTextLength(value, maxLength) {
+  const text = String(value || "").replace(/\s+/g, " ").trim();
+  if (!Number.isFinite(maxLength) || maxLength <= 0) {
+    return text;
+  }
+  if (text.length <= maxLength) {
+    return text;
+  }
+  return text.slice(0, maxLength).trim();
+}
+
 function normalizeInviteSessionPeriod(value) {
   const raw = String(value || "")
     .replace(/\s+/g, "")
@@ -1380,7 +1391,7 @@ function parseInviteSessionEventsFromText(content, options = {}) {
 
     const blockEvents = parseInviteEventRowsFromBlock(block.text).map((event) => ({
       ...event,
-      event_name: `${eventSessionTag} ${event.event_name}`.trim(),
+      event_name: limitTextLength(`${eventSessionTag} ${event.event_name}`, 500),
     }));
 
     events.push(...blockEvents);
