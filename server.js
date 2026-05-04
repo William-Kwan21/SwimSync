@@ -537,10 +537,11 @@ async function getImportedTextFromPayload(payload) {
 
   const lowerType = rawType.trim().toLowerCase();
   const lowerName = rawName.trim().toLowerCase();
+  const isExplicitlyText = lowerType === "text/plain" || lowerType === "text" || !lowerType;
   const isPdf =
     lowerType === "pdf" ||
     lowerType === "application/pdf" ||
-    lowerName.endsWith(".pdf");
+    (lowerName.endsWith(".pdf") && !isExplicitlyText);
 
   if (!rawContent.trim()) {
     throw new Error("content is required");

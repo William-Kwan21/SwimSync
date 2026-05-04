@@ -3,7 +3,7 @@
 -- This allows for longer event names with session tags and gender prefixes
 -- and stores warmup timing information for each session
 
-USE ;
+USE hello_db;
 
 ALTER TABLE meet_events MODIFY COLUMN event_name VARCHAR(500) NOT NULL;
 ALTER TABLE meet_days ADD COLUMN warmup_time VARCHAR(100) NULL;
