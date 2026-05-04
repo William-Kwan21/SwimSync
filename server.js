@@ -1204,8 +1204,16 @@ function parseInviteEventRowsFromBlock(blockText) {
     }
     seen.add(dedupeKey);
 
-    const distanceWithUnits = cleanDescriptor.match(/\b(\d{2,4})\s*(?:m|meter|meters|yd|yard|yards)\b/i);
-    const distanceNoUnits = cleanDescriptor.match(
+    // Remove only duplicated leading gender words; keep age/range tokens intact.
+    const descriptorNoGender = cleanDescriptor
+      .replace(/^(?:girls?|boys?|women|men|female|male)\s+/i, "")
+      .trim();
+
+    // Some OCR lines begin with "& Over" after removing gender. Treat that as Open.
+    const descriptorForParsing = descriptorNoGender.replace(/^&\s*over\b/i, "Open");
+
+    const distanceWithUnits = descriptorForParsing.match(/\b(\d{2,4})\s*(?:m|meter|meters|yd|yard|yards)\b/i);
+    const distanceNoUnits = descriptorForParsing.match(
       /\b(25|50|100|200|400|500|800|1000|1500)\b\s*(?=(?:freestyle|free|backstroke|back|breaststroke|breast|butterfly|fly|individual\s+medley|im|relay)\b)/i,
     );
     const distanceMeters = distanceWithUnits
@@ -1214,22 +1222,35 @@ function parseInviteEventRowsFromBlock(blockText) {
         ? Number(distanceNoUnits[1])
         : null;
 
+    // Ignore malformed OCR rows that do not contain a recognizable event distance.
+    if (!Number.isFinite(distanceMeters)) {
+      return;
+    }
+
     let stroke = null;
-    if (/\bindividual\s+medley\b|\bim\b/i.test(cleanDescriptor)) {
+    if (/\bindividual\s+medley\b|\bim\b/i.test(descriptorForParsing)) {
       stroke = "individual medley";
-    } else if (/\bfreestyle\b|\bfree\b/i.test(cleanDescriptor)) {
+    } else if (/\bfreestyle\b|\bfree\b/i.test(descriptorForParsing)) {
       stroke = "freestyle";
-    } else if (/\bbackstroke\b|\bback\b/i.test(cleanDescriptor)) {
+    } else if (/\bbackstroke\b|\bback\b/i.test(descriptorForParsing)) {
       stroke = "backstroke";
-    } else if (/\bbreaststroke\b|\bbreast\b/i.test(cleanDescriptor)) {
+    } else if (/\bbreaststroke\b|\bbreast\b/i.test(descriptorForParsing)) {
       stroke = "breaststroke";
-    } else if (/\bbutterfly\b|\bfly\b/i.test(cleanDescriptor)) {
+    } else if (/\bbutterfly\b|\bfly\b/i.test(descriptorForParsing)) {
       stroke = "butterfly";
-    } else if (/\brelay\b/i.test(cleanDescriptor)) {
+    } else if (/\brelay\b/i.test(descriptorForParsing)) {
       stroke = "relay";
     }
 
-    const ageGroup = extractAgeGroupFromText(cleanDescriptor) || null;
+    let ageGroup = extractAgeGroupFromText(descriptorForParsing) || null;
+    if (!ageGroup) {
+      const ageHintMatch = descriptorForParsing.match(
+        /\b(\d{1,2}\s*(?:-|to|\/)\s*\d{1,2}|\d{1,2}\s*(?:&|and)?\s*(?:under|over|u|o)|open|senior|junior)\b/i,
+      );
+      if (ageHintMatch) {
+        ageGroup = extractAgeGroupFromText(ageHintMatch[1]) || String(ageHintMatch[1]).trim();
+      }
+    }
     const normalizedGender = normalizeGender(gender);
     const genderCapitalized = normalizedGender ? normalizedGender.charAt(0).toUpperCase() + normalizedGender.slice(1) : "";
     
@@ -1241,7 +1262,7 @@ function parseInviteEventRowsFromBlock(blockText) {
     if (stroke) eventNameParts.push(stroke.charAt(0).toUpperCase() + stroke.slice(1));
     const eventNameBuilt = eventNameParts.length > 0 
       ? eventNameParts.join(" ")
-      : cleanDescriptor;
+      : descriptorForParsing;
 
     events.push({
       event_name: limitTextLength(eventNameBuilt, 150),
@@ -1819,11 +1840,14 @@ async function getMeetEligibilityForSwimmers(meetId, swimmerIds, meetDate = null
     const eligibleEventIds = [];
 
     selectedEvents.forEach((event) => {
-      if (!genderMatches(event.gender, swimmer.gender)) {
+      const effectiveGender = event.gender || extractGenderFromText(event.event_name || "");
+      const effectiveAgeGroup = event.age_group || extractAgeGroupFromText(event.event_name || "");
+
+      if (!genderMatches(effectiveGender, swimmer.gender)) {
         return;
       }
 
-      if (!ageMatches(event.age_group, swimmer.date_of_birth, meetDate)) {
+      if (!ageMatches(effectiveAgeGroup, swimmer.date_of_birth, meetDate)) {
         return;
       }
 
@@ -3440,7 +3464,7 @@ app.put(
       
       if (allDates.length > 0) {
         const dayValues = allDates.map(() => "(?, ?, ?, ?, ?)").join(", ");
-        const dayParams = allDates.flatMap((date) => [meetId, date, null, null, null]);
+        const dayParams = allDates.flatMap((date) => [meetId, date, "", null, null]);
         
         await pool.query(
           `INSERT INTO meet_days (meet_id, meet_day, session_label, age_group, gender)
@@ -3560,25 +3584,32 @@ app.get("/api/meets/:id", authenticate, async (req, res) => {
       swimmerIds = await getAccessibleSwimmerIdsForUser(req.user);
     }
 
+    const accessibleSwimmerIds = [...new Set(
+      swimmerIds
+        .map((id) => Number(id))
+        .filter((id) => Number.isInteger(id) && id > 0),
+    )];
+
     const eligibility = await getMeetEligibilityForSwimmers(
       meetId,
-      swimmerIds,
+      accessibleSwimmerIds,
       meetRows[0].meet_date,
     );
 
     if (
       (req.user.role === "swimmer" || req.user.role === "parent") &&
-      eligibility.visibleSwimmerIds.length === 0
+      accessibleSwimmerIds.length === 0
     ) {
       return res.status(404).json({ message: "Meet not found" });
     }
 
     const visibleSwimmerIds = eligibility.visibleSwimmerIds;
+    const declarationSwimmerIds = accessibleSwimmerIds;
 
-    const swimmerRows = await getSwimmerRowsByIds(visibleSwimmerIds);
+    const swimmerRows = await getSwimmerRowsByIds(declarationSwimmerIds);
 
     let declarations = [];
-    if (visibleSwimmerIds.length > 0) {
+    if (declarationSwimmerIds.length > 0) {
       const [rows] = await pool.query(
         `SELECT md.meet_day, md.session_label, md.age_group, md.gender,
                 d.swimmer_id, d.status, d.note, u.name AS swimmer_name
@@ -3586,33 +3617,33 @@ app.get("/api/meets/:id", authenticate, async (req, res) => {
          JOIN meet_days md
            ON md.meet_id = d.meet_id
           AND md.meet_day = d.meet_day
-          AND md.session_label = d.session_label
+          AND md.session_label <=> d.session_label
          JOIN swimmers s ON s.id = d.swimmer_id
          JOIN users u ON u.id = s.user_id
          WHERE d.meet_id = ?
-           AND d.swimmer_id IN (${visibleSwimmerIds.map(() => "?").join(",")})
+           AND d.swimmer_id IN (${declarationSwimmerIds.map(() => "?").join(",")})
          ORDER BY md.meet_day ASC, md.session_label ASC, u.name ASC`,
-        [meetId, ...visibleSwimmerIds],
+        [meetId, ...declarationSwimmerIds],
       );
       declarations = rows;
     }
 
     let entries = [];
-    if (visibleSwimmerIds.length > 0) {
+    if (declarationSwimmerIds.length > 0) {
       const [rows] = await pool.query(
         `SELECT me.swimmer_id, me.meet_event_id
          FROM meet_entries me
          JOIN meet_events e ON e.id = me.meet_event_id
          WHERE e.meet_id = ?
-           AND me.swimmer_id IN (${visibleSwimmerIds.map(() => "?").join(",")})`,
-        [meetId, ...visibleSwimmerIds],
+           AND me.swimmer_id IN (${declarationSwimmerIds.map(() => "?").join(",")})`,
+        [meetId, ...declarationSwimmerIds],
       );
       entries = rows;
     }
 
     const declarationEligibility = [];
     const swimmerById = new Map(swimmerRows.map((row) => [Number(row.swimmer_id), row]));
-    for (const swimmerId of visibleSwimmerIds) {
+    for (const swimmerId of declarationSwimmerIds) {
       const swimmer = swimmerById.get(Number(swimmerId));
       if (!swimmer) continue;
       for (const day of days) {

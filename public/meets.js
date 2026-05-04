@@ -417,10 +417,7 @@ function renderPublicEventsTable(detail) {
     const cleanEventName = String(eventTitle || "-")
       .replace(/\bEvent\s+\d{1,3}\b\s*/i, "")
       .trim();
-    
-    // Prepend gender to event name if available
-    const genderPrefix = event.gender ? `${event.gender} ` : "";
-    const displayEventName = genderPrefix + cleanEventName;
+    const displayEventName = cleanEventName;
     
     const standardText = event.qualifying_time_text || "NT";
     const entryState = "OPEN";
