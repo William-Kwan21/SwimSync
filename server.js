@@ -1080,8 +1080,8 @@ function splitInviteSessionBlocks(content) {
     });
   };
 
-  // Pattern 1: "Friday AM Session"
-  const headingRegex = /\b(Friday|Saturday|Sunday)\s+(AM|PM|MID(?:-?DAY)?|AFTERNOON|MORNING)\s+Session\b/gi;
+  // Pattern 1: "Friday AM Session" or "Friday AM"
+  const headingRegex = /\b(Friday|Saturday|Sunday)\s+(AM|PM|MID(?:-?DAY)?|AFTERNOON|MORNING)(?:\s+Session)?\b/gi;
   let match;
   while ((match = headingRegex.exec(text))) {
     addMatch(match.index, match[1], match[0].length, match[2]);
@@ -1166,9 +1166,10 @@ function parseInviteEventRowsFromBlock(blockText) {
   const normalized = rawText
     .replace(/\bGirls\s+Event\s+Boys\b/gi, " ")
     .replace(/\bGirls\s+Event\b|\bBoys\b/gi, " ")
-    .replace(/\bwarm[- ]?up:.*$/gim, " ")
-    .replace(/\bstart:.*$/gim, " ")
+    .replace(/\bwarm[- ]?up\s*:?.*$/gim, " ")
+    .replace(/\bstart\s*:?\s*\d{1,2}:\d{2}\s*(am|pm).*$/gim, " ")
     .replace(/\b15\s*minute\s*break\b/gi, " ")
+    .replace(/\b\d{4,}\s*(?:meet|session|times?\s+may\s+be|limited|provided|heats?).*$/gim, " ")
     .replace(/\*+/g, " ")
     .replace(/[\u2022•·]/g, " ")
     .replace(/[–—]/g, "-")
@@ -1223,12 +1224,24 @@ function parseInviteEventRowsFromBlock(blockText) {
       stroke = "relay";
     }
 
+    const ageGroup = extractAgeGroupFromText(cleanDescriptor) || null;
+    const normalizedGender = normalizeGender(gender);
+    
+    // Build event name from age_group + distance + stroke
+    const eventNameParts = [];
+    if (ageGroup) eventNameParts.push(ageGroup);
+    if (distanceMeters) eventNameParts.push(`${distanceMeters}m`);
+    if (stroke) eventNameParts.push(stroke.charAt(0).toUpperCase() + stroke.slice(1));
+    const eventNameBuilt = eventNameParts.length > 0 
+      ? eventNameParts.join(" ")
+      : cleanDescriptor;
+
     events.push({
-      event_name: buildEventName(eventNumber, cleanDescriptor),
+      event_name: limitTextLength(eventNameBuilt, 150),
       stroke: stroke ? normalizeStroke(stroke) : null,
       distance_meters: Number.isFinite(distanceMeters) ? distanceMeters : null,
-      age_group: extractAgeGroupFromText(cleanDescriptor) || null,
-      gender: normalizeGender(gender),
+      age_group: ageGroup,
+      gender: normalizedGender,
       qualifying_time_seconds: null,
       qualifying_time_text: null,
       is_selected: events.length < 4,
