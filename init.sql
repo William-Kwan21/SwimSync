@@ -120,6 +120,7 @@ CREATE TABLE IF NOT EXISTS meets (
   meet_date DATE NOT NULL,
   location VARCHAR(150) NULL,
   host_team VARCHAR(120) NULL,
+  import_filename VARCHAR(255) NULL,
   created_by_coach_id INT NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT fk_meets_created_by_coach

@@ -1080,20 +1080,30 @@ function splitInviteSessionBlocks(content) {
     });
   };
 
-  // Pattern 1: "Friday AM Session" or "Friday AM"
+  console.log("🔍 splitInviteSessionBlocks input (first 500 chars):", text.slice(0, 500));
+
+  // Pattern 1: "Friday AM Session" or "Friday AM" or "Friday Afternoon"
   const headingRegex = /\b(Friday|Saturday|Sunday)\s+(AM|PM|MID(?:-?DAY)?|AFTERNOON|MORNING)(?:\s+Session)?\b/gi;
   let match;
+  let pattern1Count = 0;
   while ((match = headingRegex.exec(text))) {
+    pattern1Count++;
+    console.log("🔍 Pattern 1 (heading):", match[0], "at index", match.index);
     addMatch(match.index, match[1], match[0].length, match[2]);
   }
 
-  // Pattern 2: "Session 3: Saturday MID"
-  const summaryRegex = /\bSession\s*\d+\s*:\s*(Friday|Saturday|Sunday)\s*(AM|PM|MID(?:-?DAY)?|AFTERNOON|MORNING)?\b/gi;
+  // Pattern 2: "Session 3: Saturday MID" or "Session 1: Friday Afternoon"
+  const summaryRegex = /\bSession\s*\d+\s*:\s*(Friday|Saturday|Sunday)\s*(AM|PM|MID(?:-?DAY)?|AFTERNOON|MORNING)?/gi;
+  let pattern2Count = 0;
   while ((match = summaryRegex.exec(text))) {
+    pattern2Count++;
+    console.log("🔍 Pattern 2 (summary):", match[0], "at index", match.index);
     addMatch(match.index, match[1], match[0].length, match[2] || "");
   }
 
-  // Pattern 3: fallback for flattened text with repeated "Start: HH:MM AM/PM"
+  // Pattern 3: "Warm-Up 7:15 AM" or "Warm-up: 7:15 AM" (detect period from warmup times)
+  const warmupRegex = /\bWarm[\s-]?[Uu]p\s*:?\s*(\d{1,2}):(\d{2})\s*(AM|PM)/gi;
+  let pattern3Count = 0;
   const dayMentions = [];
   const dayRegexGlobal = /\b(Friday|Saturday|Sunday)\b/gi;
   while ((match = dayRegexGlobal.exec(text))) {
@@ -1112,11 +1122,24 @@ function splitInviteSessionBlocks(content) {
     return day;
   };
 
-  const startRegex = /\bStart\s*:\s*(\d{1,2}):(\d{2})\s*(AM|PM)\b/gi;
-  while ((match = startRegex.exec(text))) {
+  while ((match = warmupRegex.exec(text))) {
+    pattern3Count++;
     const dayName = resolveDayAtIndex(match.index);
+    console.log("🔍 Pattern 3 (warmup):", match[0], "-> day:", dayName, "time:", match[3]);
     addMatch(match.index, dayName, match[0].length, match[3]);
   }
+
+  // Pattern 4: "Start: HH:MM AM/PM" (fallback)
+  const startRegex = /\bStart\s*:\s*(\d{1,2}):(\d{2})\s*(AM|PM)\b/gi;
+  let pattern4Count = 0;
+  while ((match = startRegex.exec(text))) {
+    pattern4Count++;
+    const dayName = resolveDayAtIndex(match.index);
+    console.log("🔍 Pattern 4 (start time):", match[0], "-> day:", dayName, "time:", match[3]);
+    addMatch(match.index, dayName, match[0].length, match[3]);
+  }
+
+  console.log("🔍 Pattern matches found:", { pattern1: pattern1Count, pattern2: pattern2Count, pattern3: pattern3Count, pattern4: pattern4Count, totalMatches: matches.length });
 
   if (matches.length > 1) {
     matches.sort((a, b) => a.index - b.index);
@@ -1136,18 +1159,24 @@ function splitInviteSessionBlocks(content) {
     deduped.push(item);
   }
 
+  console.log("🔍 After dedup:", deduped.length, "unique sessions");
+
   if (!deduped.length) {
     return [];
   }
 
-  return deduped.map((current, index) => {
+  const result = deduped.map((current, index) => {
     const next = deduped[index + 1];
-    return {
+    const sessionBlock = {
       dayName: current.dayName,
       sessionLabel: current.sessionLabel,
       text: text.slice(current.index + current.length, next ? next.index : text.length).trim(),
     };
+    console.log("🔍 Session block", index, ":", { dayName: sessionBlock.dayName, sessionLabel: sessionBlock.sessionLabel, textLength: sessionBlock.text.length });
+    return sessionBlock;
   });
+
+  return result;
 }
 
 function extractWarmupTimeFromBlock(blockText) {
@@ -1264,6 +1293,15 @@ function parseInviteEventRowsFromBlock(blockText) {
       ? eventNameParts.join(" ")
       : descriptorForParsing;
 
+    console.log("🔍 Built event:", {
+      descriptor: descriptorForParsing.slice(0, 60),
+      ageGroup,
+      distanceMeters,
+      stroke,
+      genderCapitalized,
+      eventNameBuilt
+    });
+
     events.push({
       event_name: limitTextLength(eventNameBuilt, 150),
       stroke: stroke ? normalizeStroke(stroke) : null,
@@ -1371,6 +1409,12 @@ function parseInviteEventRowsFromBlock(blockText) {
 
 function parseInviteSessionEventsFromText(content, options = {}) {
   const blocks = splitInviteSessionBlocks(content);
+  console.log("🔍 splitInviteSessionBlocks found", blocks.length, "blocks:", blocks.map(b => ({
+    dayName: b.dayName,
+    sessionLabel: b.sessionLabel,
+    textLength: b.text.length
+  })));
+  
   const meetDate =
     normalizeDateOnly(options.meet_date) || detectMeetDateFromText(content, options);
 
@@ -1594,7 +1638,10 @@ function parseMeetFileContent(content, options = {}) {
   let payloadRows = [];
   let meta = null;
 
+  console.log("🔍 parseMeetFileContent: text starts with", text.slice(0, 50));
+
   if (text.startsWith("{") || text.startsWith("[")) {
+    console.log("🔍 Using JSON parser");
     const parsed = JSON.parse(text);
     if (Array.isArray(parsed)) {
       payloadRows = parsed;
@@ -1607,13 +1654,16 @@ function parseMeetFileContent(content, options = {}) {
           : [];
     }
   } else {
+    console.log("🔍 Trying CSV parser");
     payloadRows = parseCsvToObjects(text);
     if (!payloadRows.length) {
+      console.log("🔍 CSV parser failed, trying CSV-from-text parser");
       payloadRows = parseCsvFromAnyText(text);
     }
   }
 
   if (!Array.isArray(payloadRows) || payloadRows.length === 0) {
+    console.log("🔍 No CSV/JSON rows found, trying invite parser");
     const detectedDate =
       detectMeetDateFromText(text, options) || normalizeDateOnly(new Date().toISOString().slice(0, 10));
     const inviteParsed = parseInviteSessionEventsFromText(text, {
@@ -1621,6 +1671,7 @@ function parseMeetFileContent(content, options = {}) {
       meet_date: detectedDate,
     });
     if (inviteParsed.events.length) {
+      console.log("🔍 Invite parser succeeded with", inviteParsed.events.length, "events and", inviteParsed.days.length, "days");
       return {
         meet_name: detectMeetNameFromText(text, options),
         meet_date: detectedDate,
@@ -1631,6 +1682,7 @@ function parseMeetFileContent(content, options = {}) {
       };
     }
 
+    console.log("🔍 Invite parser failed, trying plain text parser");
     const parsedEvents = parseMeetEventsFromPlainText(text);
     if (!parsedEvents.length) {
       throw new Error(
@@ -3183,6 +3235,23 @@ app.post(
       parsedMeet = parseMeetFileContent(content, {
         file_name: payload && payload.file_name ? payload.file_name : "",
       });
+      console.log("🔍 parseMeetFileContent result:", {
+        meet_name: parsedMeet.meet_name,
+        meet_date: parsedMeet.meet_date,
+        days_count: (parsedMeet.days || []).length,
+        days: (parsedMeet.days || []).map((d) => ({ 
+          meet_day: d.meet_day, 
+          session_label: d.session_label,
+          age_group: d.age_group,
+          gender: d.gender
+        })),
+        events_count: (parsedMeet.events || []).length,
+        sample_events: (parsedMeet.events || []).slice(0, 3).map((e) => ({
+          event_name: e.event_name,
+          age_group: e.age_group,
+          gender: e.gender
+        }))
+      });
     } catch (error) {
       const contentLength = String(content || "").trim().length;
       return res
@@ -3203,13 +3272,14 @@ app.post(
       const coachId = await getCoachIdForUser(req.user.sub);
 
       const [meetResult] = await connection.query(
-        `INSERT INTO meets (meet_name, meet_date, location, host_team, created_by_coach_id)
-         VALUES (?, ?, ?, ?, ?)`,
+        `INSERT INTO meets (meet_name, meet_date, location, host_team, import_filename, created_by_coach_id)
+         VALUES (?, ?, ?, ?, ?, ?)`,
         [
           parsedMeet.meet_name,
           parsedMeet.meet_date,
           parsedMeet.location,
           parsedMeet.host_team,
+          payload && payload.file_name ? String(payload.file_name).slice(0, 255) : null,
           coachId,
         ],
       );
@@ -3552,7 +3622,7 @@ app.get("/api/meets/:id", authenticate, async (req, res) => {
 
   try {
     const [meetRows] = await pool.query(
-      `SELECT id, meet_name, meet_date, location, host_team, created_at
+      `SELECT id, meet_name, meet_date, location, host_team, import_filename, created_at
        FROM meets
        WHERE id = ?
        LIMIT 1`,
@@ -3646,13 +3716,60 @@ app.get("/api/meets/:id", authenticate, async (req, res) => {
 
     const declarationEligibility = [];
     const swimmerById = new Map(swimmerRows.map((row) => [Number(row.swimmer_id), row]));
+    
+    // Group events by session for easier lookup
+    const eventsBySession = new Map();
+    events.forEach((event) => {
+      // Extract session label from event_name or use parsed session_label if available
+      let sessionLabel = "";
+      const parsed = String(event.event_name || "").match(/^\[([^\]]+)\]/);
+      if (parsed) {
+        sessionLabel = parsed[1];
+      }
+      
+      const key = `${sessionLabel}`;
+      if (!eventsBySession.has(key)) {
+        eventsBySession.set(key, []);
+      }
+      eventsBySession.get(key).push(event);
+    });
+    
+    console.log("🔍 Events by session:", Array.from(eventsBySession.entries()).map(([label, evts]) => ({
+      session_label: label,
+      event_count: evts.length
+    })));
+    
     for (const swimmerId of declarationSwimmerIds) {
       const swimmer = swimmerById.get(Number(swimmerId));
       if (!swimmer) continue;
+      
       for (const day of days) {
-        const allowed =
-          genderMatches(day.gender, swimmer.gender) &&
-          ageMatches(day.age_group, swimmer.date_of_birth, day.meet_day);
+        // Check if swimmer is eligible for this session by checking events in the session
+        const sessionKey = String(day.session_label || "").trim();
+        const sessionEvents = eventsBySession.get(sessionKey) || [];
+        
+        let allowed = false;
+        if (sessionEvents.length > 0) {
+          // Check if any event in this session is eligible for the swimmer
+          allowed = sessionEvents.some((event) => {
+            const effectiveGender = event.gender || extractGenderFromText(event.event_name || "");
+            const effectiveAgeGroup = event.age_group || extractAgeGroupFromText(event.event_name || "");
+            
+            return (
+              genderMatches(effectiveGender, swimmer.gender) &&
+              ageMatches(effectiveAgeGroup, swimmer.date_of_birth, day.meet_day)
+            );
+          });
+        } else if (day.age_group || day.gender) {
+          // Fallback: if no events in session, check session constraints
+          allowed =
+            genderMatches(day.gender, swimmer.gender) &&
+            ageMatches(day.age_group, swimmer.date_of_birth, day.meet_day);
+        } else {
+          // No events and no session constraints = open to everyone
+          allowed = true;
+        }
+        
         declarationEligibility.push({
           swimmer_id: Number(swimmerId),
           meet_day: day.meet_day,

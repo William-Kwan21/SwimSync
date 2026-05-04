@@ -310,6 +310,70 @@ function renderMeetDays(days) {
     .join("");
 }
 
+function renderImportantInfo(detail) {
+  const importantInfoCard = document.getElementById("meet-important-info");
+  const importantInfoContent = document.getElementById("meet-info-content");
+  if (!importantInfoCard || !importantInfoContent) return;
+
+  const meet = detail && detail.meet ? detail.meet : {};
+  const days = Array.isArray(detail && detail.days) ? detail.days : [];
+
+  // Build location section
+  let locationHtml = "";
+  if (meet.location) {
+    locationHtml = `
+      <div style="padding: 0.75rem; border: 1px solid #dee2e6; border-radius: 4px;">
+        <div style="font-weight: 600; margin-bottom: 0.5rem;">Location</div>
+        <div>${escHtml(meet.location)}</div>
+      </div>
+    `;
+  }
+
+  // Build warmup times section
+  let warmupHtml = "";
+  const sessionsWithWarmup = days.filter((d) => d.warmup_time);
+  if (sessionsWithWarmup.length > 0) {
+    const warmupRows = sessionsWithWarmup
+      .map((d) => {
+        const sessionName = d.session_label || formatDate(d.meet_day);
+        return `
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; font-size: 0.9rem;">
+            <div style="color: #666;">${escHtml(sessionName)}:</div>
+            <div>${escHtml(d.warmup_time)}</div>
+          </div>
+        `;
+      })
+      .join("");
+
+    warmupHtml = `
+      <div style="padding: 0.75rem; border: 1px solid #dee2e6; border-radius: 4px;">
+        <div style="font-weight: 600; margin-bottom: 0.5rem;">Warm-up Times</div>
+        ${warmupRows}
+      </div>
+    `;
+  }
+
+  // Build original file section
+  let fileHtml = "";
+  if (meet.import_filename) {
+    fileHtml = `
+      <div style="padding: 0.75rem; border: 1px solid #dee2e6; border-radius: 4px;">
+        <div style="font-weight: 600; margin-bottom: 0.5rem;">Original File</div>
+        <div style="word-break: break-all; font-size: 0.9rem;">${escHtml(meet.import_filename)}</div>
+      </div>
+    `;
+  }
+
+  const contentHtml = [locationHtml, warmupHtml, fileHtml].filter(Boolean).join("");
+
+  if (contentHtml) {
+    importantInfoContent.innerHTML = contentHtml;
+    show(importantInfoCard);
+  } else {
+    hide(importantInfoCard);
+  }
+}
+
 function renderMeetOverview(detail) {
   if (!meetOverview) return;
 
@@ -707,6 +771,7 @@ async function loadMeetDetail(meetId) {
     meetDetailTitle.textContent = detail.meet.meet_name;
     meetDetailMeta.textContent = `${formatDate(detail.meet.meet_date)} · ${detail.meet.location || "Location TBD"}${detail.meet.host_team ? ` · ${detail.meet.host_team}` : ""}`;
     renderMeetOverview(detail);
+    renderImportantInfo(detail);
     renderMeetEditForm(detail);
     renderMeetDays(detail.days || []);
     renderPublicEventsTable(detail);
