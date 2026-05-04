@@ -359,7 +359,12 @@ function renderImportantInfo(detail) {
     fileHtml = `
       <div style="padding: 0.75rem; border: 1px solid #dee2e6; border-radius: 4px;">
         <div style="font-weight: 600; margin-bottom: 0.5rem;">Original File</div>
-        <div style="word-break: break-all; font-size: 0.9rem;">${escHtml(meet.import_filename)}</div>
+        <div style="word-break: break-all; font-size: 0.9rem;">
+          <a href="#" style="color: #0066cc; text-decoration: none; cursor: pointer; display: inline-flex; align-items: center; gap: 0.5rem;">
+            <span>📄</span>
+            <span>${escHtml(meet.import_filename)}</span>
+          </a>
+        </div>
       </div>
     `;
   }

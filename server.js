@@ -802,20 +802,30 @@ function parseMonthDayCandidate(raw, referenceYear) {
   const text = String(raw || "").replace(/\s+/g, " ").trim();
   if (!text) return null;
 
+  // Match date ranges like "May 1-3" or "May 1 to 3" or "May 1, 2026"
   const match = text.match(
-    /\b(January|February|March|April|May|June|July|August|September|October|November|December|Jan|Feb|Mar|Apr|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)\s+(\d{1,2})(?:\s*(?:-|to|through)\s*\d{1,2})?(?:,?\s+(\d{4}))?\b/i,
+    /\b(January|February|March|April|May|June|July|August|September|October|November|December|Jan|Feb|Mar|Apr|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)\s+(\d{1,2})(?:\s*(?:-|to|through)\s*(\d{1,2}))?(?:,?\s+(\d{4}))?\b/i,
   );
   if (!match) return null;
 
   const month = monthMap[String(match[1] || "").toLowerCase()];
-  const day = Number(match[2]);
-  const year = match[3] ? Number(match[3]) : Number(referenceYear);
+  const startDay = Number(match[2]);
+  const endDay = match[3] ? Number(match[3]) : null;
+  const year = match[4] ? Number(match[4]) : Number(referenceYear);
 
-  if (!month || !Number.isFinite(day) || day < 1 || day > 31 || !Number.isFinite(year)) {
+  if (!month || !Number.isFinite(startDay) || startDay < 1 || startDay > 31 || !Number.isFinite(year)) {
     return null;
   }
 
-  return `${String(year).padStart(4, "0")}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+  const startDate = `${String(year).padStart(4, "0")}-${String(month).padStart(2, "0")}-${String(startDay).padStart(2, "0")}`;
+  
+  // If end date is specified, return range object; otherwise just start date
+  if (endDay && Number.isFinite(endDay) && endDay > startDay && endDay <= 31) {
+    const endDate = `${String(year).padStart(4, "0")}-${String(month).padStart(2, "0")}-${String(endDay).padStart(2, "0")}`;
+    return { start: startDate, end: endDate };
+  }
+  
+  return startDate;
 }
 
 function detectMeetDateFromText(text, options = {}) {
@@ -838,26 +848,38 @@ function detectMeetDateFromText(text, options = {}) {
   );
   if (prioritized) {
     const parsed = parseMonthDayCandidate(prioritized, referenceYear);
-    if (parsed) return parsed;
+    if (parsed) {
+      console.log("🔍 Detected meet date from prioritized line:", parsed);
+      return parsed;
+    }
   }
 
   const monthRangeRegex = /\b(January|February|March|April|May|June|July|August|September|October|November|December|Jan|Feb|Mar|Apr|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)\s+\d{1,2}(?:\s*(?:-|to|through)\s*\d{1,2})?(?:,?\s+\d{4})?\b/gi;
   let monthMatch;
   while ((monthMatch = monthRangeRegex.exec(rawText)) !== null) {
     const parsed = parseMonthDayCandidate(monthMatch[0], referenceYear);
-    if (parsed) return parsed;
+    if (parsed) {
+      console.log("🔍 Detected meet date from month range regex:", parsed);
+      return parsed;
+    }
   }
 
   const isoLike = rawText.match(/\b\d{4}-\d{2}-\d{2}\b/);
   if (isoLike) {
     const parsed = normalizeDateOnly(isoLike[0]);
-    if (parsed) return parsed;
+    if (parsed) {
+      console.log("🔍 Detected meet date from ISO format:", parsed);
+      return parsed;
+    }
   }
 
   const slashLike = rawText.match(/\b\d{1,2}\/\d{1,2}\/\d{2,4}\b/);
   if (slashLike) {
     const parsed = normalizeDateOnly(slashLike[0]);
-    if (parsed) return parsed;
+    if (parsed) {
+      console.log("🔍 Detected meet date from slash format:", parsed);
+      return parsed;
+    }
   }
 
   return null;
@@ -1415,8 +1437,15 @@ function parseInviteSessionEventsFromText(content, options = {}) {
     textLength: b.text.length
   })));
   
-  const meetDate =
-    normalizeDateOnly(options.meet_date) || detectMeetDateFromText(content, options);
+  let meetDate = options.meet_date ? options.meet_date : detectMeetDateFromText(content, options);
+  
+  // Handle date range objects (e.g., { start: "2026-05-01", end: "2026-05-03" })
+  if (meetDate && typeof meetDate === "object" && meetDate.start) {
+    meetDate = meetDate.start;
+    console.log("🔍 Using start date from range:", meetDate);
+  }
+  
+  meetDate = normalizeDateOnly(meetDate);
 
   if (!blocks.length) {
     return { days: [], events: [] };
@@ -1664,8 +1693,15 @@ function parseMeetFileContent(content, options = {}) {
 
   if (!Array.isArray(payloadRows) || payloadRows.length === 0) {
     console.log("🔍 No CSV/JSON rows found, trying invite parser");
-    const detectedDate =
+    let detectedDate =
       detectMeetDateFromText(text, options) || normalizeDateOnly(new Date().toISOString().slice(0, 10));
+    
+    // Handle date range object (e.g., { start: "2026-05-01", end: "2026-05-03" })
+    if (detectedDate && typeof detectedDate === "object" && detectedDate.start) {
+      console.log("🔍 Detected date range:\", detectedDate);
+      detectedDate = detectedDate.start;
+    }
+    
     const inviteParsed = parseInviteSessionEventsFromText(text, {
       ...options,
       meet_date: detectedDate,
