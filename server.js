@@ -1409,12 +1409,13 @@ function parseInviteSessionEventsFromText(content, options = {}) {
     pushDay(sessionSummaryMatch[1], sessionSummaryMatch[2]);
   }
 
-  blocks.forEach((block) => {
-    const sessionLabel = `${block.dayName} ${block.sessionLabel}`.trim();
+  blocks.forEach((block, index) => {
+    const normalizedBlockSession = normalizeSessionLabel(block.sessionLabel || `Session ${index + 1}`);
+    const sessionLabel = `${block.dayName} ${normalizedBlockSession}`.trim();
     const sessionAgeGroup = detectSessionAgeGroupFromText(block.text);
     const warmupTime = extractWarmupTimeFromBlock(block.text);
 
-    const dayEntry = pushDay(block.dayName, block.sessionLabel);
+    const dayEntry = pushDay(block.dayName, normalizedBlockSession);
     if (dayEntry && sessionAgeGroup && !dayEntry.age_group) {
       dayEntry.age_group = sessionAgeGroup;
     }
@@ -1431,7 +1432,9 @@ function parseInviteSessionEventsFromText(content, options = {}) {
 
     const blockEvents = parseInviteEventRowsFromBlock(block.text).map((event) => ({
       ...event,
-      event_name: limitTextLength(event.event_name, 150),
+      session_label: sessionLabel,
+      meet_day: eventSessionDate,
+      event_name: limitTextLength(`[${sessionLabel}] ${event.event_name}`, 150),
     }));
 
     events.push(...blockEvents);
