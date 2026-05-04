@@ -348,6 +348,16 @@ async function initDatabase(config) {
     )
   `);
 
+  try {
+    await admin.query(
+      "ALTER TABLE meets ADD COLUMN import_filename VARCHAR(255) NULL AFTER host_team",
+    );
+  } catch (error) {
+    if (error.code !== "ER_DUP_FIELDNAME") {
+      throw error;
+    }
+  }
+
   await admin.query(`
     CREATE TABLE IF NOT EXISTS meet_events (
       id INT AUTO_INCREMENT PRIMARY KEY,
@@ -372,6 +382,14 @@ async function initDatabase(config) {
     if (error.code !== "ER_DUP_FIELDNAME") {
       throw error;
     }
+  }
+
+  try {
+    await admin.query(
+      "ALTER TABLE meet_events MODIFY COLUMN event_name VARCHAR(500) NOT NULL",
+    );
+  } catch (error) {
+    // Silently ignore if column modification fails
   }
 
   try {
