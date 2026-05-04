@@ -444,8 +444,8 @@ function renderPublicEventsTable(detail) {
     const entryState = "OPEN";
     const entryClass = "event-entry-in";
     
-    // Use database age_group, or extract from event_name as fallback
-    const ageGroup = event.age_group || extractAgeGroupFromEventName(eventTitle);
+    // Use database age_group, or extract from cleaned event_name as fallback
+    const ageGroup = event.age_group || extractAgeGroupFromEventName(cleanEventName);
     const tagBits = [ageGroup || ""].filter(Boolean);
     
     const metaBits = [event.distance_meters ? `${event.distance_meters}m` : "", event.stroke || ""]
@@ -551,6 +551,11 @@ function renderDeclarationTable(detail) {
     age_group: row.age_group || "",
     gender: row.gender || "",
   }));
+  
+  // Debug: Log what we have
+  console.log("renderDeclarationTable - dayValues:", dayValues);
+  console.log("renderDeclarationTable - detail.declaration_eligibility:", detail.declaration_eligibility);
+  
   const declarationMap = new Map();
 
   (detail.declarations || []).forEach((entry) => {
@@ -578,8 +583,12 @@ function renderDeclarationTable(detail) {
     // Filter to only eligible sessions for this swimmer
     const eligibleSessions = dayValues.filter((dayInfo) => {
       const key = declarationSessionKey(swimmer.swimmer_id, dayInfo.meet_day, dayInfo.session_label);
-      return eligibilityMap.get(key) === true;
+      const isEligible = eligibilityMap.get(key) === true;
+      console.log(`Checking swimmer ${swimmer.swimmer_id} on ${dayInfo.meet_day} "${dayInfo.session_label}": key="${key}" eligible=${isEligible}`);
+      return isEligible;
     });
+
+    console.log(`Swimmer ${swimmer.swimmer_name}: ${eligibleSessions.length} eligible sessions`);
 
     if (!eligibleSessions.length) {
       return; // Skip swimmers with no eligible sessions
