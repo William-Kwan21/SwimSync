@@ -316,6 +316,35 @@ function renderMeetOverview(detail) {
   const dayCount = Array.isArray(detail && detail.days) ? detail.days.length : 0;
   const eventCount = Array.isArray(detail && detail.events) ? detail.events.length : 0;
 
+  // Calculate date range from all meet days
+  let dateRangeDisplay = formatDate(meet.meet_date);
+  if (Array.isArray(detail && detail.days) && detail.days.length > 1) {
+    const dates = detail.days
+      .map((day) => String(day.meet_day || "").slice(0, 10))
+      .filter(Boolean)
+      .sort();
+    
+    if (dates.length > 1) {
+      const firstDate = new Date(dates[0] + "T00:00:00");
+      const lastDate = new Date(dates[dates.length - 1] + "T00:00:00");
+      
+      if (!Number.isNaN(firstDate.getTime()) && !Number.isNaN(lastDate.getTime())) {
+        const firstMonth = firstDate.toLocaleDateString("en-US", { month: "short" });
+        const firstDay = firstDate.getDate();
+        const lastMonth = lastDate.toLocaleDateString("en-US", { month: "short" });
+        const lastDay = lastDate.getDate();
+        const year = firstDate.getFullYear();
+        
+        // Format as "May 1-3, 2026" or "May 1 - Jun 3, 2026" if different months
+        if (firstMonth === lastMonth) {
+          dateRangeDisplay = `${firstMonth} ${firstDay}-${lastDay}, ${year}`;
+        } else {
+          dateRangeDisplay = `${firstMonth} ${firstDay} - ${lastMonth} ${lastDay}, ${year}`;
+        }
+      }
+    }
+  }
+
   meetOverview.innerHTML = `
     <div>
       <p class="summary-label">Meet Name</p>
@@ -323,7 +352,7 @@ function renderMeetOverview(detail) {
     </div>
     <div>
       <p class="summary-label">Meet Date</p>
-      <p class="summary-value">${formatDate(meet.meet_date)}</p>
+      <p class="summary-value">${dateRangeDisplay}</p>
     </div>
     <div>
       <p class="summary-label">Location</p>
@@ -439,6 +468,11 @@ function renderMeetEditForm(detail) {
       : "";
   meetEditLocation.value = detail && detail.meet && detail.meet.location ? detail.meet.location : "";
   meetEditHostTeam.value = detail && detail.meet && detail.meet.host_team ? detail.meet.host_team : "";
+  
+  // Disable date field if meet has multiple days to prevent accidentally overwriting multi-day structure
+  const dayCount = Array.isArray(detail && detail.days) ? detail.days.length : 0;
+  meetEditDate.disabled = dayCount > 1;
+  
   hide(meetEditStatus);
   show(meetEditControls);
 }

@@ -1193,6 +1193,11 @@ function parseInviteEventRowsFromBlock(blockText) {
       return;
     }
 
+    // Filter out metadata/instruction lines
+    if (/\b(emailed|hy-tek|deck|entries|allowed|mail|payment|entry\s+fee|surcharge|original\s+email|contact|questions|information|officials|heats)\b/i.test(cleanDescriptor)) {
+      return;
+    }
+
     const dedupeKey = `${eventNumber}|${gender}|${cleanDescriptor.toLowerCase()}`;
     if (seen.has(dedupeKey)) {
       return;
@@ -1226,9 +1231,11 @@ function parseInviteEventRowsFromBlock(blockText) {
 
     const ageGroup = extractAgeGroupFromText(cleanDescriptor) || null;
     const normalizedGender = normalizeGender(gender);
+    const genderCapitalized = normalizedGender ? normalizedGender.charAt(0).toUpperCase() + normalizedGender.slice(1) : "";
     
-    // Build event name from age_group + distance + stroke
+    // Build event name: gender + age_group + distance + stroke
     const eventNameParts = [];
+    if (genderCapitalized) eventNameParts.push(genderCapitalized);
     if (ageGroup) eventNameParts.push(ageGroup);
     if (distanceMeters) eventNameParts.push(`${distanceMeters}m`);
     if (stroke) eventNameParts.push(stroke.charAt(0).toUpperCase() + stroke.slice(1));
