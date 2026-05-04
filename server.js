@@ -3395,15 +3395,32 @@ app.put(
     }
 
     const meetName = String(req.body && req.body.meet_name ? req.body.meet_name : "").trim();
-    const meetDate = normalizeDateOnly(req.body && req.body.meet_date);
+    const startDate = normalizeDateOnly(req.body && req.body.start_date);
+    const endDate = normalizeDateOnly(req.body && req.body.end_date);
     const location = String(req.body && req.body.location ? req.body.location : "").trim();
     const hostTeam = String(req.body && req.body.host_team ? req.body.host_team : "").trim();
 
-    if (!meetName || !meetDate) {
-      return res.status(400).json({ message: "meet_name and meet_date are required" });
+    if (!meetName || !startDate || !endDate) {
+      return res.status(400).json({ message: "meet_name, start_date, and end_date are required" });
+    }
+
+    if (startDate > endDate) {
+      return res.status(400).json({ message: "start_date must be before or equal to end_date" });
     }
 
     try {
+      // Generate all dates in range
+      const allDates = [];
+      const current = new Date(startDate + "T00:00:00Z");
+      const end = new Date(endDate + "T00:00:00Z");
+      
+      while (current <= end) {
+        const dateStr = current.toISOString().split("T")[0];
+        allDates.push(dateStr);
+        current.setUTCDate(current.getUTCDate() + 1);
+      }
+
+      // Update meet with first date as meet_date (for backward compatibility)
       const [result] = await pool.query(
         `UPDATE meets
          SET meet_name = ?,
@@ -3411,11 +3428,26 @@ app.put(
              location = ?,
              host_team = ?
          WHERE id = ?`,
-        [meetName, meetDate, location || null, hostTeam || null, meetId],
+        [meetName, startDate, location || null, hostTeam || null, meetId],
       );
 
       if (result.affectedRows === 0) {
         return res.status(404).json({ message: "Meet not found" });
+      }
+
+      // Delete existing meet_days and recreate from date range
+      await pool.query("DELETE FROM meet_days WHERE meet_id = ?", [meetId]);
+      
+      if (allDates.length > 0) {
+        const dayValues = allDates.map(() => "(?, ?, ?, ?, ?)").join(", ");
+        const dayParams = allDates.flatMap((date) => [meetId, date, null, null, null]);
+        
+        await pool.query(
+          `INSERT INTO meet_days (meet_id, meet_day, session_label, age_group, gender)
+           VALUES ${dayValues}
+           ON DUPLICATE KEY UPDATE meet_day = VALUES(meet_day)`,
+          dayParams,
+        );
       }
 
       const [rows] = await pool.query(

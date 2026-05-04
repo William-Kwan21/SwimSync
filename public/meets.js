@@ -47,7 +47,8 @@ const meetPublicEventsTbody = document.getElementById("meet-public-events-tbody"
 const meetEditControls = document.getElementById("meet-edit-controls");
 const meetEditForm = document.getElementById("meet-edit-form");
 const meetEditName = document.getElementById("meet-edit-name");
-const meetEditDate = document.getElementById("meet-edit-date");
+const meetEditStartDate = document.getElementById("meet-edit-start-date");
+const meetEditEndDate = document.getElementById("meet-edit-end-date");
 const meetEditLocation = document.getElementById("meet-edit-location");
 const meetEditHostTeam = document.getElementById("meet-edit-host-team");
 const meetEditStatus = document.getElementById("meet-edit-status");
@@ -462,16 +463,22 @@ function renderMeetEditForm(detail) {
   }
 
   meetEditName.value = detail && detail.meet && detail.meet.meet_name ? detail.meet.meet_name : "";
-  meetEditDate.value =
-    detail && detail.meet && detail.meet.meet_date
-      ? String(detail.meet.meet_date).slice(0, 10)
-      : "";
   meetEditLocation.value = detail && detail.meet && detail.meet.location ? detail.meet.location : "";
   meetEditHostTeam.value = detail && detail.meet && detail.meet.host_team ? detail.meet.host_team : "";
   
-  // Disable date field if meet has multiple days to prevent accidentally overwriting multi-day structure
+  // Get date range from meet days
   const dayCount = Array.isArray(detail && detail.days) ? detail.days.length : 0;
-  meetEditDate.disabled = dayCount > 1;
+  if (dayCount > 0) {
+    const dates = (detail.days || [])
+      .map((day) => String(day.meet_day || "").slice(0, 10))
+      .filter(Boolean)
+      .sort();
+    
+    if (dates.length > 0) {
+      meetEditStartDate.value = dates[0];
+      meetEditEndDate.value = dates[dates.length - 1];
+    }
+  }
   
   hide(meetEditStatus);
   show(meetEditControls);
@@ -1311,7 +1318,8 @@ if (meetEditForm) {
     try {
       const payload = {
         meet_name: meetEditName.value.trim(),
-        meet_date: meetEditDate.value,
+        start_date: meetEditStartDate.value,
+        end_date: meetEditEndDate.value,
         location: meetEditLocation.value.trim(),
         host_team: meetEditHostTeam.value.trim(),
       };
