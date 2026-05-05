@@ -432,6 +432,16 @@ async function initDatabase(config) {
     }
   }
 
+  try {
+    await admin.query(
+      "ALTER TABLE meet_events ADD COLUMN course VARCHAR(20) NULL DEFAULT 'SCY' AFTER distance_meters",
+    );
+  } catch (error) {
+    if (error.code !== "ER_DUP_FIELDNAME") {
+      throw error;
+    }
+  }
+
   await admin.query(`
     CREATE TABLE IF NOT EXISTS meet_entries (
       id INT AUTO_INCREMENT PRIMARY KEY,

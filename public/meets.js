@@ -911,9 +911,11 @@ function getBestTimeForSwimmerAndEvent(detail, swimmerId, event) {
     if (!detail || !Array.isArray(detail.best_times) || !event) return null;
     const stroke = String(event.stroke || "").trim();
     const distance = Number(event.distance_meters) || null;
+    const course = String(event.course || "SCY").trim().toUpperCase();
 
-    // find exact match by swimmer, stroke and distance
+    // find exact match by swimmer, stroke, distance, and course
     const match = detail.best_times.find((bt) => {
+      const btCourse = String(bt.course || "SCY").trim().toUpperCase();
       return (
         Number(bt.swimmer_id) === Number(swimmerId) &&
         String(bt.stroke || "")
@@ -924,7 +926,8 @@ function getBestTimeForSwimmerAndEvent(detail, swimmerId, event) {
             .toLowerCase() &&
         (distance == null
           ? false
-          : Number(bt.distance_meters) === Number(distance))
+          : Number(bt.distance_meters) === Number(distance)) &&
+        btCourse === course
       );
     });
 

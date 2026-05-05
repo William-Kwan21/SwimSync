@@ -134,6 +134,7 @@ CREATE TABLE IF NOT EXISTS meet_events (
   event_name VARCHAR(500) NOT NULL,
   stroke VARCHAR(40) NULL,
   distance_meters INT NULL,
+  course VARCHAR(20) NULL DEFAULT 'SCY',
   age_group VARCHAR(40) NULL,
   gender VARCHAR(20) NULL,
   is_selected TINYINT(1) NOT NULL DEFAULT 0,

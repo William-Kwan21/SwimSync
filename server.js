@@ -1419,14 +1419,14 @@ function extractInviteSessionDaysFromText(content, meetDate) {
   };
 
   const headingRegex =
-    /\b(Friday|Saturday|Sunday)\s+(AM|PM|MID(?:-?DAY)?|AFTERNOON|MORNING)(?:\s+Session)?/gi;
+    /\b(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)\s+(AM|PM|MID(?:-?DAY)?|AFTERNOON|MORNING|SESSION)(?:\s+Session)?\b/gi;
   let match;
   while ((match = headingRegex.exec(text)) !== null) {
     addMatch(match.index, match[1], match[2]);
   }
 
   const summaryRegex =
-    /\bSession\s*\d+\s*:\s*(Friday|Saturday|Sunday)\s*(AM|PM|MID(?:-?DAY)?|AFTERNOON|MORNING)?/gi;
+    /\bSession\s*\d+\s*:\s*(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)\s*(AM|PM|MID(?:-?DAY)?|AFTERNOON|MORNING)?/gi;
   while ((match = summaryRegex.exec(text)) !== null) {
     addMatch(match.index, match[1], match[2] || "PM");
   }
@@ -1594,6 +1594,7 @@ function parseInviteEventRowsFromBlock(blockText) {
       event_name: limitTextLength(eventNameBuilt, 150),
       stroke: stroke ? normalizeStroke(stroke) : null,
       distance_meters: Number.isFinite(distanceMeters) ? distanceMeters : null,
+      course: "SCY", // Default to Short Course Yards
       age_group: ageGroup,
       gender: normalizedGender,
       qualifying_time_seconds: null,
@@ -1691,6 +1692,7 @@ function parseInviteEventRowsFromBlock(blockText) {
         distance_meters: Number.isFinite(distanceMeters)
           ? distanceMeters
           : null,
+        course: "SCY", // Default to Short Course Yards
         age_group: ageGroup,
         gender: normalizedGender,
         qualifying_time_seconds: null,
@@ -1836,7 +1838,7 @@ function parseInviteSessionEventsFromText(content, options = {}) {
   // Now split the text into blocks using these 7 session markers
   const sessionMarkers = [];
   const headingRegex =
-    /\b(Friday|Saturday|Sunday)\s+(AM|PM|MID(?:-?DAY)?|AFTERNOON|MORNING)(?:\s+Session)?\b/gi;
+    /\b(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)\s+(AM|PM|MID(?:-?DAY)?|AFTERNOON|MORNING|SESSION)(?:\s+Session)?\b/gi;
   let match;
   while ((match = headingRegex.exec(text)) !== null) {
     const dayName = match[1];
@@ -1855,7 +1857,20 @@ function parseInviteSessionEventsFromText(content, options = {}) {
   // For each session from allSessions, extract events from nearby text
   allSessions.forEach((session, sessionIndex) => {
     const sessionLabel = session.session_label;
-    const matchingMarker = sessionMarkers.find((m) => m.key === sessionLabel);
+    const matchingMarker = sessionMarkers.find((m) => {
+      // Try exact match first
+      if (m.key === sessionLabel) return true;
+      // Try case-insensitive match
+      if (m.key.toLowerCase() === sessionLabel.toLowerCase()) return true;
+      // Try partial match (in case of minor formatting differences)
+      const dayPartFromSession = sessionLabel.split(" ")[0];
+      const dayPartFromMarker = m.key.split(" ")[0];
+      if (dayPartFromSession && dayPartFromMarker && 
+          dayPartFromSession.toLowerCase() === dayPartFromMarker.toLowerCase()) {
+        return true;
+      }
+      return false;
+    });
 
     if (matchingMarker) {
       // Find the start and end of this session's text block
@@ -1882,6 +1897,7 @@ function parseInviteSessionEventsFromText(content, options = {}) {
           ...event,
           session_label: sessionLabel,
           meet_day: session.meet_day,
+          course: event.course || "SCY", // Default to Short Course Yards
           age_group:
             event.age_group || session.age_group || sessionAgeGroup || null,
           gender: event.gender || null,
@@ -1900,8 +1916,47 @@ function parseInviteSessionEventsFromText(content, options = {}) {
         "events",
       );
       events.push(...blockEvents);
+    } else {
+      console.log(
+        "🔍 No matching marker found for session:",
+        sessionLabel,
+        "- will attempt fallback extraction"
+      );
     }
   });
+
+  // Fallback: if we got very few events (less than 40% of what we expect),
+  // try extracting all events from the entire text without session filtering
+  if (events.length < 24) {
+    console.log(
+      "🔍 Only extracted",
+      events.length,
+      "events, trying fallback full-text extraction..."
+    );
+    const fallbackEvents = parseInviteEventRowsFromBlock(text);
+    if (fallbackEvents.length > events.length) {
+      console.log("🔍 Fallback found", fallbackEvents.length, "events");
+      const defaultSession = allSessions.length > 0 ? allSessions[0] : null;
+      if (defaultSession) {
+        fallbackEvents.forEach((event) => {
+          if (!events.some((e) => e.event_name === event.event_name)) {
+            events.push({
+              ...event,
+              session_label: defaultSession.session_label,
+              meet_day: defaultSession.meet_day,
+              course: event.course || "SCY",
+              age_group: event.age_group || defaultSession.age_group || null,
+              gender: event.gender || null,
+              event_name: limitTextLength(
+                `[${defaultSession.session_label}] ${event.event_name}`,
+                500
+              ),
+            });
+          }
+        });
+      }
+    }
+  }
 
   const normalizedDays = normalizeMeetDayEntries(allSessions, meetDate);
 
@@ -2016,6 +2071,7 @@ function parseMeetEventsFromPlainText(content) {
       event_name: buildEventName(eventNumber, cleanName),
       stroke: stroke ? normalizeStroke(stroke) : null,
       distance_meters: Number.isFinite(distanceMeters) ? distanceMeters : null,
+      course: "SCY", // Default to Short Course Yards
       age_group: ageGroup || null,
       gender: gender ? normalizeGender(gender) : null,
       qualifying_time_seconds: null,
@@ -2217,6 +2273,10 @@ function parseMeetFileContent(content, options = {}) {
       return;
     }
 
+    const course =
+      firstNonEmpty(row, ["course", "pool_type", "pool"], "") ||
+      "SCY"; // Default to Short Course Yards (most common in USA)
+
     const explicitEventNumber = Number(
       firstNonEmpty(
         row,
@@ -2280,6 +2340,7 @@ function parseMeetFileContent(content, options = {}) {
       event_name: buildEventName(eventNumber, eventName),
       stroke: stroke || null,
       distance_meters: Number.isFinite(distanceMeters) ? distanceMeters : null,
+      course: course || "SCY",
       age_group: ageGroup || null,
       gender: gender ? normalizeGender(gender) : null,
       qualifying_time_seconds: qualifyingSeconds,
@@ -2517,12 +2578,10 @@ app.post("/api/signup", async (req, res) => {
     !date_of_birth ||
     !address
   ) {
-    return res
-      .status(400)
-      .json({
-        message:
-          "name, email, password, role, gender, date_of_birth, and address are required",
-      });
+    return res.status(400).json({
+      message:
+        "name, email, password, role, gender, date_of_birth, and address are required",
+    });
   }
 
   if (!["swimmer", "parent"].includes(role)) {
@@ -2678,12 +2737,10 @@ app.post("/api/users", authenticate, requireRole("admin"), async (req, res) => {
     !date_of_birth ||
     !address
   ) {
-    return res
-      .status(400)
-      .json({
-        message:
-          "name, email, password, role, gender, date_of_birth, and address are required",
-      });
+    return res.status(400).json({
+      message:
+        "name, email, password, role, gender, date_of_birth, and address are required",
+    });
   }
 
   if (!["admin", "coach", "swimmer", "parent"].includes(role)) {
@@ -3948,7 +4005,7 @@ app.post(
 
       if (parsedMeet.events.length) {
         const eventValues = parsedMeet.events
-          .map(() => "(?, ?, ?, ?, ?, ?, ?, ?, ?)")
+          .map(() => "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
           .join(", ");
 
         const eventParams = parsedMeet.events.flatMap((event) => [
@@ -3956,6 +4013,7 @@ app.post(
           event.event_name,
           event.stroke,
           event.distance_meters,
+          event.course || "SCY",
           event.age_group,
           event.gender,
           event.is_selected ? 1 : 0,
@@ -3965,7 +4023,7 @@ app.post(
 
         await connection.query(
           `INSERT INTO meet_events
-             (meet_id, event_name, stroke, distance_meters, age_group, gender, is_selected, qualifying_time_seconds, qualifying_time_text)
+             (meet_id, event_name, stroke, distance_meters, course, age_group, gender, is_selected, qualifying_time_seconds, qualifying_time_text)
            VALUES ${eventValues}`,
           eventParams,
         );
@@ -4009,12 +4067,10 @@ app.post(
       const errorText = String(
         error && error.message ? error.message : "Unknown import error",
       ).trim();
-      return res
-        .status(500)
-        .json({
-          message: `Failed to import meet: ${errorText}`,
-          error: errorText,
-        });
+      return res.status(500).json({
+        message: `Failed to import meet: ${errorText}`,
+        error: errorText,
+      });
     } finally {
       connection.release();
     }
@@ -4308,7 +4364,7 @@ app.get("/api/meets/:id", authenticate, async (req, res) => {
       [meetId],
     );
     const [events] = await pool.query(
-      `SELECT id, event_name, stroke, distance_meters, age_group, gender,
+      `SELECT id, event_name, stroke, distance_meters, course, age_group, gender,
               is_selected, qualifying_time_seconds, qualifying_time_text
        FROM meet_events
        WHERE meet_id = ?
