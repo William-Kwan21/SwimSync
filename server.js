@@ -403,7 +403,16 @@ function parseCsvFromAnyText(content) {
     return [];
   }
 
-  return parseCsvToObjects(candidateLines.join("\n"));
+  const rows = parseCsvToObjects(candidateLines.join("\n"));
+  if (!rows.length) return [];
+  const knownFields = [
+    "event_name", "event", "name", "stroke", "distance", "distance_meters",
+    "age_group", "gender", "meet_day", "day", "session", "qualifying_time",
+    "time_standard", "cut_time", "is_selected", "selected",
+  ];
+  const headers = Object.keys(rows[0]).map((h) => h.toLowerCase().trim());
+  if (!headers.some((h) => knownFields.includes(h))) return [];
+  return rows;
 }
 
 async function extractTextFromPdfBase64(base64) {
@@ -1158,7 +1167,7 @@ function splitInviteSessionBlocks(content) {
   const warmupRegex = /\bWarm[\s-]?[Uu]p\s*:?\s*(\d{1,2}):(\d{2})\s*(AM|PM)/gi;
   let pattern3Count = 0;
   const dayMentions = [];
-  const dayRegexGlobal = /\b(Friday|Saturday|Sunday)\b/gi;
+ const dayRegexGlobal = /(Friday|Saturday|Sunday)/gi;
   while ((match = dayRegexGlobal.exec(text))) {
     dayMentions.push({ index: match.index, dayName: match[1] });
   }
@@ -1191,7 +1200,16 @@ function splitInviteSessionBlocks(content) {
     console.log("🔍 Pattern 4 (start time):", match[0], "-> day:", dayName, "time:", match[3]);
     addMatch(match.index, dayName, match[0].length, match[3]);
   }
-
+ const concatenatedRegex = /\b(Friday|Saturday|Sunday)(AM|PM|MID(?:-?DAY)?|AFTERNOON|MORNING)/gi;
+  let pattern5Count = 0;
+  while ((match = concatenatedRegex.exec(text))) {
+    const charBefore = match.index > 0 ? text[match.index - 1] : "\n";
+    const charAfter = text[match.index + match[0].length] || "\n";
+    if (!/\s/.test(charAfter) || !/\s/.test(charBefore)) {
+      pattern5Count++;
+      addMatch(match.index, match[1], match[0].length, match[2]);
+    }
+  }
   console.log("🔍 Pattern matches found:", { pattern1: pattern1Count, pattern2: pattern2Count, pattern2b: pattern2bCount, pattern3: pattern3Count, pattern4: pattern4Count, totalMatches: matches.length });
 
   if (matches.length > 1) {
@@ -1953,22 +1971,23 @@ function parseMeetFileContent(content, options = {}) {
   });
 
   if (!events.length) {
-    const parsedEvents = parseMeetEventsFromPlainText(text);
-    if (!parsedEvents.length) {
+     const meetName = detectMeetNameFromText(text, options);
+    let detectedDate =
+      detectMeetDateFromText(text, options) || normalizeDateOnly(new Date().toISOString().slice(0, 10));
+    if (detectedDate && typeof detectedDate === "object" && detectedDate.start) {
+      detectedDate = detectedDate.start;
+    }
+    const inviteParsed = parseInviteSessionEventsFromText(text, { ...options, meet_date: detectedDate });
+    if (!inviteParsed.events.length) {
       throw new Error("No valid events were found in the meet file");
     }
-
-    const meetName = detectMeetNameFromText(text, options);
-    const detectedDate =
-      detectMeetDateFromText(text, options) || normalizeDateOnly(new Date().toISOString().slice(0, 10));
-
     return {
       meet_name: meetName,
       meet_date: detectedDate,
-      location: location || null,
-      host_team: hostTeam || null,
-      days: normalizeMeetDayEntries([detectedDate], detectedDate),
-      events: parsedEvents,
+      location: null,
+      host_team: null,
+      days: normalizeMeetDayEntries(inviteParsed.days, detectedDate),
+      events: inviteParsed.events,
     };
   }
 
