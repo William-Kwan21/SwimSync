@@ -3834,6 +3834,41 @@ app.get("/api/meets/:id", authenticate, async (req, res) => {
       [meetId],
     );
 
+    // Fallback: if meet_days are missing or only one generic day, try to reconstruct
+    // session-level meet_days from event_name session prefixes like "[Friday PM] ..."
+    let returnedDays = Array.isArray(days) ? days : [];
+    try {
+      if ((returnedDays.length <= 1) && Array.isArray(events) && events.length) {
+        const sessionLabels = new Map();
+        events.forEach((ev) => {
+          const m = String(ev.event_name || "").match(/^\[([^\]]+)\]/);
+          if (m && m[1]) sessionLabels.set(m[1].trim(), true);
+        });
+
+        if (sessionLabels.size > 0) {
+          const baseDate = meetRows[0] && (meetRows[0].start_date || meetRows[0].meet_date) ? (meetRows[0].start_date || meetRows[0].meet_date) : null;
+          const reconstructed = [];
+          for (const label of sessionLabels.keys()) {
+            // Expect labels like "Friday PM" or "Saturday MID"
+            const parts = String(label).split(/\s+/).filter(Boolean);
+            const dayName = parts.length ? parts[0] : null;
+            const periodRaw = parts.length > 1 ? parts.slice(1).join(" ") : "";
+            if (!dayName) continue;
+            const normalizedPeriod = normalizeInviteSessionPeriod(periodRaw);
+            const meet_day = baseDate ? addDaysToDateOnly(baseDate, getDayOffsetFromDate(baseDate, dayName)) : null;
+            if (!meet_day) continue;
+            reconstructed.push({ meet_day, session_label: `${dayName} ${normalizedPeriod}`.trim(), age_group: null, gender: null });
+          }
+          if (reconstructed.length) {
+            returnedDays = normalizeMeetDayEntries(reconstructed, meetRows[0] && (meetRows[0].start_date || meetRows[0].meet_date));
+            console.log("🔍 Reconstructed meet_days from events:", returnedDays.map(d => ({ meet_day: d.meet_day, session_label: d.session_label })));
+          }
+        }
+      }
+    } catch (reconErr) {
+      console.log("⚠️ Failed to reconstruct meet_days from events:", reconErr && reconErr.message ? reconErr.message : reconErr);
+    }
+
     let swimmerIds = [];
     if (req.user.role === "admin" || req.user.role === "coach") {
       const [swimmerRows] = await pool.query("SELECT id FROM swimmers ORDER BY id ASC");
@@ -3966,7 +4001,7 @@ app.get("/api/meets/:id", authenticate, async (req, res) => {
 
     return res.json({
       meet: meetRows[0],
-      days,
+      days: returnedDays,
       events,
       swimmers: swimmerRows,
       eligibility: Array.from(eligibility.eligibilityBySwimmerId.values()),
