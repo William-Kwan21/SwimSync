@@ -1545,13 +1545,6 @@ function parseInviteEventRowsFromBlock(blockText) {
 }
 
 function parseInviteSessionEventsFromText(content, options = {}) {
-  const blocks = splitInviteSessionBlocks(content);
-  console.log("🔍 splitInviteSessionBlocks found", blocks.length, "blocks:", blocks.map(b => ({
-    dayName: b.dayName,
-    sessionLabel: b.sessionLabel,
-    textLength: b.text.length
-  })));
-  
   let meetDate = options.meet_date ? options.meet_date : detectMeetDateFromText(content, options);
   
   // Handle date range objects (e.g., { start: "2026-05-01", end: "2026-05-03" })
@@ -1561,88 +1554,70 @@ function parseInviteSessionEventsFromText(content, options = {}) {
   }
   
   meetDate = normalizeDateOnly(meetDate);
-  console.log("🔍 parseInviteSessionEventsFromText meetDate:", meetDate, "blocks:", blocks.length);
+  
+  // First, get ALL 7 sessions from the fallback extractor (this is more reliable)
+  const allSessions = extractInviteSessionDaysFromText(content, meetDate);
+  console.log("🔍 extractInviteSessionDaysFromText found", allSessions.length, "sessions:", allSessions.map(s => ({
+    meet_day: s.meet_day,
+    session_label: s.session_label
+  })));
 
-  if (!blocks.length) {
+  if (!allSessions.length) {
     return { days: [], events: [] };
   }
 
-  const dayMap = new Map();
+  const text = String(content || "").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
   const events = [];
 
-  const pushDay = (dayName, sessionLabelRaw) => {
-    const normalizedSession = normalizeInviteSessionPeriod(sessionLabelRaw);
-    const sessionDate = meetDate
-      ? addDaysToDateOnly(meetDate, getDayOffsetFromDate(meetDate, dayName))
-      : null;
-    if (!sessionDate) return null;
-    const key = `${sessionDate}|${dayName} ${normalizedSession}`.trim();
-    if (dayMap.has(key)) {
-      return dayMap.get(key);
-    }
-
-    const entry = {
-      meet_day: sessionDate,
-      session_label: `${dayName} ${normalizedSession}`.trim(),
-      age_group: null,
-      gender: null,
-    };
-    dayMap.set(key, entry);
-    return entry;
-  };
-
-  // Capture session schedule summaries like: "Session 3: Saturday MID ..."
-  const sessionSummaryRegex = /\bSession\s*\d+\s*:\s*(Friday|Saturday|Sunday)\s+(AM|PM|MID(?:-?DAY)?|AFTERNOON|MORNING)\b/gi;
-  let sessionSummaryMatch;
-  while ((sessionSummaryMatch = sessionSummaryRegex.exec(String(content || ""))) !== null) {
-    pushDay(sessionSummaryMatch[1], sessionSummaryMatch[2]);
+  // Now split the text into blocks using these 7 session markers
+  const sessionMarkers = [];
+  const headingRegex = /\b(Friday|Saturday|Sunday)\s+(AM|PM|MID(?:-?DAY)?|AFTERNOON|MORNING)(?:\s+Session)?\b/gi;
+  let match;
+  while ((match = headingRegex.exec(text)) !== null) {
+    const dayName = match[1];
+    const sessionRaw = match[2];
+    const normalizedSession = normalizeInviteSessionPeriod(sessionRaw);
+    const key = `${dayName} ${normalizedSession}`.trim();
+    sessionMarkers.push({
+      index: match.index,
+      key,
+      match: match[0]
+    });
   }
 
-  blocks.forEach((block, index) => {
-    const normalizedBlockSession = normalizeSessionLabel(block.sessionLabel || `Session ${index + 1}`);
-    const sessionLabel = `${block.dayName} ${normalizedBlockSession}`.trim();
-    const sessionAgeGroup = detectSessionAgeGroupFromText(block.text);
-    const warmupTime = extractWarmupTimeFromBlock(block.text);
+  console.log("🔍 Found", sessionMarkers.length, "session markers in text");
 
-    const dayEntry = pushDay(block.dayName, normalizedBlockSession);
-    if (dayEntry && sessionAgeGroup && !dayEntry.age_group) {
-      dayEntry.age_group = sessionAgeGroup;
+  // For each session from allSessions, extract events from nearby text
+  allSessions.forEach((session, sessionIndex) => {
+    const sessionLabel = session.session_label;
+    const matchingMarker = sessionMarkers.find(m => m.key === sessionLabel);
+    
+    if (matchingMarker) {
+      // Find the start and end of this session's text block
+      const blockStart = matchingMarker.index + matchingMarker.match.length;
+      const nextMarker = sessionMarkers.find(m => m.index > matchingMarker.index);
+      const blockEnd = nextMarker ? nextMarker.index : text.length;
+      const blockText = text.slice(blockStart, blockEnd);
+
+      console.log("🔍 Extracting events for session:", sessionLabel, "block length:", blockText.length);
+
+      const blockEvents = parseInviteEventRowsFromBlock(blockText).map((event) => ({
+        ...event,
+        session_label: sessionLabel,
+        meet_day: session.meet_day,
+        event_name: limitTextLength(`[${sessionLabel}] ${event.event_name}`, 500),
+      }));
+
+      console.log("🔍 Session", sessionLabel, "-> extracted", blockEvents.length, "events");
+      events.push(...blockEvents);
     }
-    if (dayEntry && warmupTime && !dayEntry.warmup_time) {
-      dayEntry.warmup_time = warmupTime;
-    }
-
-    const eventSessionDate = meetDate
-      ? addDaysToDateOnly(meetDate, getDayOffsetFromDate(meetDate, block.dayName))
-      : null;
-    const eventSessionTag = eventSessionDate
-      ? `[${sessionLabel} • ${eventSessionDate}]`
-      : `[${sessionLabel}]`;
-
-    const blockEvents = parseInviteEventRowsFromBlock(block.text).map((event) => ({
-      ...event,
-      session_label: sessionLabel,
-      meet_day: eventSessionDate,
-      event_name: limitTextLength(`[${sessionLabel}] ${event.event_name}`, 500),
-    }));
-
-    events.push(...blockEvents);
   });
 
-  const normalizedDays = normalizeMeetDayEntries(Array.from(dayMap.values()), meetDate);
-  const fallbackDays = normalizedDays.length <= 1 ? extractInviteSessionDaysFromText(content, meetDate) : [];
-  const finalDays = fallbackDays.length > normalizedDays.length ? normalizeMeetDayEntries(fallbackDays, meetDate) : normalizedDays;
+  const normalizedDays = normalizeMeetDayEntries(allSessions, meetDate);
 
-  if (fallbackDays.length > normalizedDays.length) {
-    console.log("🔍 Session fallback recovered", finalDays.length, "days:", finalDays.map((d) => ({
-      meet_day: d.meet_day,
-      session_label: d.session_label,
-    })));
-  }
-
-  console.log("🔍 parseInviteSessionEventsFromText returning:", finalDays.length, "days,", events.length, "events");
-  console.log("🔍 Days returned:", finalDays.map(d => ({ meet_day: d.meet_day, session_label: d.session_label })));
-  return { days: finalDays, events };
+  console.log("🔍 parseInviteSessionEventsFromText returning:", normalizedDays.length, "days,", events.length, "events");
+  console.log("🔍 Days returned:", normalizedDays.map(d => ({ meet_day: d.meet_day, session_label: d.session_label })));
+  return { days: normalizedDays, events };
 }
 
 function parseMeetEventsFromPlainText(content) {
