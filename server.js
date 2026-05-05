@@ -1817,71 +1817,87 @@ function parseInviteSessionEventsFromText(content, options = {}) {
   const text = String(content || "")
     .replace(/\r\n/g, "\n")
     .replace(/\r/g, "\n");
+  const allSessions = extractInviteSessionDaysFromText(content, meetDate);
+  console.log(
+    "🔍 extractInviteSessionDaysFromText found",
+    allSessions.length,
+    "sessions:",
+    allSessions.map((s) => ({
+      meet_day: s.meet_day,
+      session_label: s.session_label,
+    })),
+  );
 
-  // Split by session headers - look for patterns like "Friday AM" at the start of lines
-  const sessionHeaderRegex =
-    /^(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)\s+(AM|PM|MID(?:-?DAY)?|AFTERNOON|MORNING|SESSION)(?:\s+Session)?\s*$/gim;
+  if (!allSessions.length) {
+    return { days: [], events: [] };
+  }
 
-  const sessions = [];
-  let lastIndex = 0;
-  let headerMatch;
-  const headerPositions = [];
+  const events = [];
 
-  // Find all header positions
-  while ((headerMatch = sessionHeaderRegex.exec(text)) !== null) {
-    headerPositions.push({
-      index: headerMatch.index,
-      day: headerMatch[1],
-      period: headerMatch[2],
-      text: headerMatch[0],
+  // Now split the text into blocks using these 7 session markers
+  const sessionMarkers = [];
+  const headingRegex =
+    /\b(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)\s+(AM|PM|MID(?:-?DAY)?|AFTERNOON|MORNING|SESSION)(?:\s+Session)?\b/gi;
+  let match;
+  while ((match = headingRegex.exec(text)) !== null) {
+    const dayName = match[1];
+    const sessionRaw = match[2];
+    const normalizedSession = normalizeInviteSessionPeriod(sessionRaw);
+    const key = `${dayName} ${normalizedSession}`.trim();
+    sessionMarkers.push({
+      index: match.index,
+      key,
+      match: match[0],
     });
   }
 
-  console.log(
-    "🔍 Found",
-    headerPositions.length,
-    "session headers:",
-    headerPositions.map((h) => `${h.day} ${h.period}`),
-  );
+  console.log("🔍 Found", sessionMarkers.length, "session markers in text");
 
-  // For each header, extract the table content that follows
-  for (let i = 0; i < headerPositions.length; i++) {
-    const header = headerPositions[i];
-    const dayName = header.day;
-    const periodRaw = header.period;
-    const normalizedPeriod = normalizeInviteSessionPeriod(periodRaw);
-    const sessionLabel = `${dayName} ${normalizedPeriod}`.trim();
+  // For each session from allSessions, extract events from nearby text
+  allSessions.forEach((session) => {
+    const sessionLabel = session.session_label;
+    const matchingMarker = sessionMarkers.find((m) => {
+      if (m.key === sessionLabel) return true;
+      if (m.key.toLowerCase() === sessionLabel.toLowerCase()) return true;
+      const dayPartFromSession = sessionLabel.split(" ")[0];
+      const dayPartFromMarker = m.key.split(" ")[0];
+      if (
+        dayPartFromSession &&
+        dayPartFromMarker &&
+        dayPartFromSession.toLowerCase() === dayPartFromMarker.toLowerCase()
+      ) {
+        return true;
+      }
+      return false;
+    });
 
-    // Find the start of the table (after the header)
-    const tableStart = header.index + header.text.length;
+    if (matchingMarker) {
+      const blockStart = matchingMarker.index + matchingMarker.match.length;
+      const nextMarker = sessionMarkers.find(
+        (m) => m.index > matchingMarker.index,
+      );
+      const blockEnd = nextMarker ? nextMarker.index : text.length;
+      const blockText = text.slice(blockStart, blockEnd);
 
-    // Find the end of the table (start of next header or end of document)
-    const nextHeaderIndex =
-      i + 1 < headerPositions.length
-        ? headerPositions[i + 1].index
-        : text.length;
+      console.log(
+        "🔍 Extracting events for session:",
+        sessionLabel,
+        "block length:",
+        blockText.length,
+      );
 
-    // Extract the table content
-    const tableContent = text.slice(tableStart, nextHeaderIndex).trim();
+      const sessionAgeGroup = detectSessionAgeGroupFromText(
+        session.session_label || session.age_group || "",
+      );
 
-    console.log(
-      `🔍 Session: "${sessionLabel}", table size: ${tableContent.length} chars`,
-    );
-
-    // Calculate the meeting date for this session
-    const sessionDate = meetDate
-      ? addDaysToDateOnly(meetDate, getDayOffsetFromDate(meetDate, dayName))
-      : null;
-
-    if (sessionDate) {
-      // Parse events from this specific table
-      const sessionEvents = parseInviteEventRowsFromBlock(tableContent).map(
+      const blockEvents = parseInviteEventRowsFromBlock(blockText).map(
         (event) => ({
           ...event,
           session_label: sessionLabel,
-          meet_day: sessionDate,
-          course: event.course || "SCY",
-          age_group: event.age_group || null,
+          meet_day: session.meet_day,
+          course: event.course || "SCY", // Default to Short Course Yards
+          age_group:
+            event.age_group || session.age_group || sessionAgeGroup || null,
           gender: event.gender || null,
           event_name: limitTextLength(
             `[${sessionLabel}] ${event.event_name}`,
@@ -1891,37 +1907,189 @@ function parseInviteSessionEventsFromText(content, options = {}) {
       );
 
       console.log(
-        `🔍 Session "${sessionLabel}" -> ${sessionEvents.length} events`,
+        "🔍 Session",
+        sessionLabel,
+        "-> extracted",
+        blockEvents.length,
+        "events",
       );
+      events.push(...blockEvents);
+    } else {
+      console.log(
+        "🔍 No matching marker found for session:",
+        sessionLabel,
+        "- will attempt fallback extraction",
+      );
+    }
+  });
 
-      sessions.push({
-        meet_day: sessionDate,
-        session_label: sessionLabel,
-        age_group: null,
-        gender: null,
-        events: sessionEvents,
-      });
+  // Fallback: if we got very few events (less than 40% of what we expect),
+  // try extracting all events from the entire text without session filtering
+  if (events.length < 24) {
+    console.log(
+      "🔍 Only extracted",
+      events.length,
+      "events, trying fallback full-text extraction...",
+    );
+    const fallbackEvents = parseInviteEventRowsFromBlock(text);
+    if (fallbackEvents.length > events.length) {
+      console.log("🔍 Fallback found", fallbackEvents.length, "events");
+      const defaultSession = allSessions.length > 0 ? allSessions[0] : null;
+      if (defaultSession) {
+        fallbackEvents.forEach((event) => {
+          if (!events.some((e) => e.event_name === event.event_name)) {
+            events.push({
+              ...event,
+              session_label: defaultSession.session_label,
+              meet_day: defaultSession.meet_day,
+              course: event.course || "SCY",
+              age_group: event.age_group || defaultSession.age_group || null,
+              gender: event.gender || null,
+              event_name: limitTextLength(
+                `[${defaultSession.session_label}] ${event.event_name}`,
+                500,
+              ),
+            });
+          }
+        });
+      }
     }
   }
 
-  // Flatten all events from all sessions
-  const allEvents = sessions.flatMap((s) => s.events);
-  const allSessionDays = sessions.map((s) => ({
-    meet_day: s.meet_day,
-    session_label: s.session_label,
-    age_group: s.age_group,
-    gender: s.gender,
-  }));
+  const normalizedDays = normalizeMeetDayEntries(allSessions, meetDate);
 
   console.log(
     "🔍 parseInviteSessionEventsFromText found",
-    allSessionDays.length,
+    normalizedDays.length,
     "sessions,",
-    allEvents.length,
+    events.length,
     "total events",
   );
 
-  return { days: allSessionDays, events: allEvents };
+  console.log(
+    "🔍 Days returned:",
+    normalizedDays.map((d) => ({
+      meet_day: d.meet_day,
+      session_label: d.session_label,
+    })),
+  );
+  return { days: normalizedDays, events };
+}
+
+function escapeRegExp(text) {
+  return String(text || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function buildPdfSessionHeadingPattern(sessionLabel) {
+  const label = String(sessionLabel || "").trim();
+  if (!label) return null;
+
+  const [dayName, ...periodParts] = label.split(/\s+/);
+  if (!dayName || !periodParts.length) return null;
+
+  const period = periodParts.join(" ").toUpperCase();
+  const dayPattern = escapeRegExp(dayName);
+  let periodPattern = escapeRegExp(period);
+
+  if (period === "PM") {
+    periodPattern = "(?:PM|AFTERNOON)";
+  } else if (period === "AM") {
+    periodPattern = "(?:AM|MORNING)";
+  } else if (period.startsWith("MID")) {
+    periodPattern = "(?:MID(?:[- ]?DAY)?|MIDDAY)";
+  }
+
+  return new RegExp(
+    `${dayPattern}\\s+${periodPattern}(?:\\s+Session)?`,
+    "i",
+  );
+}
+
+function parseInviteSessionEventsFromPdfText(content, options = {}) {
+  let meetDate = options.meet_date
+    ? options.meet_date
+    : detectMeetDateFromText(content, options);
+
+  if (meetDate && typeof meetDate === "object" && meetDate.start) {
+    meetDate = meetDate.start;
+    console.log("🔍 Using start date from range:", meetDate);
+  }
+
+  meetDate = normalizeDateOnly(meetDate);
+
+  const text = String(content || "")
+    .replace(/\r\n/g, "\n")
+    .replace(/\r/g, "\n");
+
+  const sessions = extractInviteSessionDaysFromText(text, meetDate);
+  if (!sessions.length) {
+    return { days: [], events: [] };
+  }
+
+  const markers = [];
+  for (const session of sessions) {
+    const pattern = buildPdfSessionHeadingPattern(session.session_label);
+    if (!pattern) {
+      continue;
+    }
+    const match = text.match(pattern);
+    if (!match || typeof match.index !== "number") {
+      const foundIndex = text.search(pattern);
+      if (foundIndex < 0) {
+        continue;
+      }
+      markers.push({
+        index: foundIndex,
+        label: session.session_label,
+        matchText: text.slice(foundIndex, foundIndex + match[0].length),
+      });
+      continue;
+    }
+    markers.push({
+      index: match.index,
+      label: session.session_label,
+      matchText: match[0],
+    });
+  }
+
+  markers.sort((a, b) => a.index - b.index);
+
+  const events = [];
+  for (let i = 0; i < sessions.length; i += 1) {
+    const session = sessions[i];
+    const marker = markers.find((entry) => entry.label === session.session_label);
+    if (!marker) {
+      continue;
+    }
+
+    const nextMarker = markers.find((entry) => entry.index > marker.index);
+    const blockStart = marker.index + marker.matchText.length;
+    const blockEnd = nextMarker ? nextMarker.index : text.length;
+    const blockText = text.slice(blockStart, blockEnd);
+    const sessionAgeGroup = detectSessionAgeGroupFromText(
+      session.session_label || session.age_group || "",
+    );
+
+    const blockEvents = parseInviteEventRowsFromBlock(blockText).map((event) => ({
+      ...event,
+      session_label: session.session_label,
+      meet_day: session.meet_day,
+      course: event.course || "SCY",
+      age_group: event.age_group || session.age_group || sessionAgeGroup || null,
+      gender: event.gender || null,
+      event_name: limitTextLength(
+        `[${session.session_label}] ${event.event_name}`,
+        500,
+      ),
+    }));
+
+    events.push(...blockEvents);
+  }
+
+  return {
+    days: normalizeMeetDayEntries(sessions, meetDate),
+    events,
+  };
 }
 
 function parseMeetEventsFromPlainText(content) {
@@ -2129,11 +2297,36 @@ function parseMeetFileContent(content, options = {}) {
       meet_date: detectedDate,
     });
     if (inviteParsed.events.length) {
+      const pdfSessionDays = extractInviteSessionDaysFromText(
+        text,
+        detectedDate,
+      );
+      const normalizedDaysSource = pdfSessionDays.length
+        ? pdfSessionDays
+        : inviteParsed.days;
+
+      if (options && options.is_pdf) {
+        const pdfParsed = parseInviteSessionEventsFromPdfText(text, {
+          ...options,
+          meet_date: detectedDate,
+        });
+        if (pdfParsed.events.length) {
+          return {
+            meet_name: detectMeetNameFromText(text, options),
+            meet_date: detectedDate,
+            location: null,
+            host_team: null,
+            days: normalizeMeetDayEntries(pdfParsed.days, detectedDate),
+            events: pdfParsed.events,
+          };
+        }
+      }
+
       console.log(
         "🔍 Invite parser succeeded with",
         inviteParsed.events.length,
         "events and",
-        inviteParsed.days.length,
+        normalizedDaysSource.length,
         "days",
       );
       return {
@@ -2141,7 +2334,7 @@ function parseMeetFileContent(content, options = {}) {
         meet_date: detectedDate,
         location: null,
         host_team: null,
-        days: normalizeMeetDayEntries(inviteParsed.days, detectedDate),
+        days: normalizeMeetDayEntries(normalizedDaysSource, detectedDate),
         events: inviteParsed.events,
       };
     }
@@ -2161,7 +2354,12 @@ function parseMeetFileContent(content, options = {}) {
       meet_date: detectedDate,
       location: null,
       host_team: null,
-      days: normalizeMeetDayEntries([detectedDate], detectedDate),
+      days: normalizeMeetDayEntries(
+        extractInviteSessionDaysFromText(text, detectedDate).length
+          ? extractInviteSessionDaysFromText(text, detectedDate)
+          : [detectedDate],
+        detectedDate,
+      ),
       events: parsedEvents,
     };
   }
@@ -3784,6 +3982,7 @@ app.post(
     try {
       parsedMeet = parseMeetFileContent(content, {
         file_name: payload && payload.file_name ? payload.file_name : "",
+        is_pdf: payload && payload.is_pdf ? true : false,
       });
       console.log("🔍 parseMeetFileContent result:", {
         meet_name: parsedMeet.meet_name,
