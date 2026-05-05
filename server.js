@@ -1497,6 +1497,42 @@ function parseInviteEventRowsFromBlock(blockText) {
         pushEvent(firstNum, descriptor, "male");
         pushEvent(secondNum, descriptor, "female");
       }
+      continue;
+    }
+
+    const looseEventRegex = /(?:^|\s)(?:(girls?|boys?|female|male)\s+)?((?:\d{1,2}\s*(?:&\s*under|&\s*over|-|to|\/)?\s*\d{0,2}|open|senior|junior)\b)?\s*(\d{2,4})\s*(?:m|meter|meters|yd|yard|yards)?\s*(freestyle|free|backstroke|back|breaststroke|breast|butterfly|fly|individual\s+medley|im|relay)\b/gi;
+    let looseMatch;
+    while ((looseMatch = looseEventRegex.exec(line)) !== null) {
+      const gender = looseMatch[1] || null;
+      const ageGroup = looseMatch[2] ? extractAgeGroupFromText(looseMatch[2]) || String(looseMatch[2]).trim() : null;
+      const distanceMeters = Number(looseMatch[3]);
+      const strokeRaw = String(looseMatch[4] || "").trim();
+      const normalizedGender = gender ? normalizeGender(gender) : null;
+      const genderCapitalized = normalizedGender ? normalizedGender.charAt(0).toUpperCase() + normalizedGender.slice(1) : "";
+      const eventNameParts = [];
+
+      if (genderCapitalized) eventNameParts.push(genderCapitalized);
+      if (ageGroup) eventNameParts.push(ageGroup);
+      if (Number.isFinite(distanceMeters)) eventNameParts.push(`${distanceMeters}m`);
+      if (strokeRaw) eventNameParts.push(strokeRaw.charAt(0).toUpperCase() + strokeRaw.slice(1));
+
+      const eventName = eventNameParts.length ? eventNameParts.join(" ") : String(line || "").trim();
+      const dedupeKey = `${eventName.toLowerCase()}|${normalizedGender || ""}|${ageGroup || ""}|${Number.isFinite(distanceMeters) ? distanceMeters : ""}`;
+      if (seen.has(dedupeKey)) {
+        continue;
+      }
+      seen.add(dedupeKey);
+
+      events.push({
+        event_name: limitTextLength(eventName, 150),
+        stroke: strokeRaw ? normalizeStroke(strokeRaw) : null,
+        distance_meters: Number.isFinite(distanceMeters) ? distanceMeters : null,
+        age_group: ageGroup,
+        gender: normalizedGender,
+        qualifying_time_seconds: null,
+        qualifying_time_text: null,
+        is_selected: events.length < 4,
+      });
     }
   }
 
@@ -1539,6 +1575,48 @@ function parseInviteEventRowsFromBlock(blockText) {
     }
 
     index += nextNumberIndex + 2;
+  }
+
+  if (events.length) {
+    return events;
+  }
+
+  // Final fallback: parse looser event lines such as "Girls 13-14 50 Freestyle"
+  for (const line of lines) {
+    const looseEventRegex = /(?:^|\s)(?:(girls?|boys?|female|male)\s+)?((?:\d{1,2}\s*(?:&\s*under|&\s*over|-|to|\/)?\s*\d{0,2}|open|senior|junior)\b)?\s*(\d{2,4})\s*(?:m|meter|meters|yd|yard|yards)?\s*(freestyle|free|backstroke|back|breaststroke|breast|butterfly|fly|individual\s+medley|im|relay)\b/gi;
+    let looseMatch;
+    while ((looseMatch = looseEventRegex.exec(line)) !== null) {
+      const gender = looseMatch[1] || null;
+      const ageGroup = looseMatch[2] ? extractAgeGroupFromText(looseMatch[2]) || String(looseMatch[2]).trim() : null;
+      const distanceMeters = Number(looseMatch[3]);
+      const strokeRaw = String(looseMatch[4] || "").trim();
+      const normalizedGender = gender ? normalizeGender(gender) : null;
+      const genderCapitalized = normalizedGender ? normalizedGender.charAt(0).toUpperCase() + normalizedGender.slice(1) : "";
+      const eventNameParts = [];
+
+      if (genderCapitalized) eventNameParts.push(genderCapitalized);
+      if (ageGroup) eventNameParts.push(ageGroup);
+      if (Number.isFinite(distanceMeters)) eventNameParts.push(`${distanceMeters}m`);
+      if (strokeRaw) eventNameParts.push(strokeRaw.charAt(0).toUpperCase() + strokeRaw.slice(1));
+
+      const eventName = eventNameParts.length ? eventNameParts.join(" ") : String(line || "").trim();
+      const dedupeKey = `${eventName.toLowerCase()}|${normalizedGender || ""}|${ageGroup || ""}|${Number.isFinite(distanceMeters) ? distanceMeters : ""}`;
+      if (seen.has(dedupeKey)) {
+        continue;
+      }
+      seen.add(dedupeKey);
+
+      events.push({
+        event_name: limitTextLength(eventName, 150),
+        stroke: strokeRaw ? normalizeStroke(strokeRaw) : null,
+        distance_meters: Number.isFinite(distanceMeters) ? distanceMeters : null,
+        age_group: ageGroup,
+        gender: normalizedGender,
+        qualifying_time_seconds: null,
+        qualifying_time_text: null,
+        is_selected: events.length < 4,
+      });
+    }
   }
 
   return events;
@@ -1605,6 +1683,8 @@ function parseInviteSessionEventsFromText(content, options = {}) {
         ...event,
         session_label: sessionLabel,
         meet_day: session.meet_day,
+        age_group: event.age_group || session.age_group || sessionAgeGroup || null,
+        gender: event.gender || null,
         event_name: limitTextLength(`[${sessionLabel}] ${event.event_name}`, 500),
       }));
 
