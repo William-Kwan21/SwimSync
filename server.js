@@ -1698,7 +1698,7 @@ function parseMeetFileContent(content, options = {}) {
     
     // Handle date range object (e.g., { start: "2026-05-01", end: "2026-05-03" })
     if (detectedDate && typeof detectedDate === "object" && detectedDate.start) {
-      console.log("🔍 Detected date range:\", detectedDate);
+      console.log("🔍 Detected date range:", detectedDate);
       detectedDate = detectedDate.start;
     }
     
