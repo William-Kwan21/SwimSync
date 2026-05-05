@@ -1873,6 +1873,10 @@ function parseInviteSessionEventsFromText(content, options = {}) {
         blockText.length,
       );
 
+      const sessionAgeGroup = detectSessionAgeGroupFromText(
+        session.session_label || session.age_group || "",
+      );
+
       const blockEvents = parseInviteEventRowsFromBlock(blockText).map(
         (event) => ({
           ...event,
