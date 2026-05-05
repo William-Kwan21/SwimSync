@@ -737,21 +737,45 @@ function renderCoachEntryTable(detail) {
       return eligibleSet.has(Number(event.id));
     });
 
-    const eventChecks = eligibleEvents.length
-      ? eligibleEvents
+    // Group events by session
+    const eventsBySession = new Map();
+    eligibleEvents.forEach((event) => {
+      const parsed = parseEventNameWithSession(event.event_name || "");
+      const sessionLabel = parsed.sessionLabel || "Unscheduled";
+      if (!eventsBySession.has(sessionLabel)) {
+        eventsBySession.set(sessionLabel, []);
+      }
+      eventsBySession.get(sessionLabel).push(event);
+    });
+
+    const sessionSections = Array.from(eventsBySession.entries())
+      .sort((a, b) => String(a[0]).localeCompare(String(b[0])))
+      .map(([sessionLabel, sessionEvents]) => {
+        const eventRows = sessionEvents
           .map((event) => {
             const checked = entrySet.has(`${swimmerId}|${Number(event.id)}`) ? "checked" : "";
             const parsed = parseEventNameWithSession(event.event_name || "");
             const displayName = parsed.eventTitle || event.event_name;
             return `<label class="checkbox-row" style="margin:0 0 0.35rem 0;"><input type="checkbox" data-entry-swimmer="${swimmerId}" data-entry-event="${event.id}" ${checked} /><span>${escHtml(displayName)}</span></label>`;
           })
-          .join("")
-          : '<span class="muted-inline">No eligible events for this swimmer.</span>';
+          .join("");
+        return `
+          <div style="margin-bottom: 0.75rem;">
+            <div style="font-weight: 600; font-size: 0.9rem; color: #333; margin-bottom: 0.5rem; padding-bottom: 0.5rem; border-bottom: 1px solid #ddd;">${escHtml(sessionLabel)}</div>
+            <div style="margin-left: 0.5rem;">${eventRows}</div>
+          </div>
+        `;
+      })
+      .join("");
+
+    const eventContent = eligibleEvents.length
+      ? sessionSections
+      : '<span class="muted-inline">No eligible events for this swimmer.</span>';
 
     rows.push(`
       <tr data-entry-swimmer-row="${swimmerId}">
         <td>${escHtml(swimmer.swimmer_name)}</td>
-        <td>${eventChecks}</td>
+        <td>${eventContent}</td>
       </tr>
     `);
   });

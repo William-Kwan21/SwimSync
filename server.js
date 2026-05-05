@@ -4,7 +4,17 @@ const bcrypt = require("bcryptjs");
 const express = require("express");
 const jwt = require("jsonwebtoken");
 const path = require("path");
+const fs = require("fs");
 const { initDatabase } = require("./db");
+
+const uploadsDir = path.join(__dirname, "uploads", "meets");
+try {
+  if (!fs.existsSync(uploadsDir)) {
+    fs.mkdirSync(uploadsDir, { recursive: true });
+  }
+} catch (error) {
+  console.warn("Warning: Could not create uploads directory:", error.message);
+}
 
 const app = express();
 const port = Number(process.env.PORT || 3000);
@@ -575,6 +585,8 @@ async function extractImportPayload(req) {
         return {
           content,
           file_name: fileName,
+          file_buffer: fileBuffer,
+          is_pdf: true,
           default_swimmer_id: defaultSwimmerId,
         };
       }
@@ -582,6 +594,8 @@ async function extractImportPayload(req) {
       return {
         content: fileBuffer.toString("utf8"),
         file_name: fileName,
+        file_buffer: fileBuffer,
+        is_pdf: false,
         default_swimmer_id: defaultSwimmerId,
       };
     }
@@ -589,6 +603,8 @@ async function extractImportPayload(req) {
     return {
       content: multipart.fields.content || "",
       file_name: fileName,
+      file_buffer: null,
+      is_pdf: false,
       default_swimmer_id: defaultSwimmerId,
     };
   }
@@ -3395,6 +3411,19 @@ app.post(
       }
 
       await connection.commit();
+
+      // Save the original file if it's a PDF
+      if (payload && payload.file_buffer && payload.is_pdf && payload.file_name) {
+        try {
+          const fileExtension = path.extname(payload.file_name) || ".pdf";
+          const safeFileName = `${meetId}${fileExtension}`;
+          const filePath = path.join(uploadsDir, safeFileName);
+          fs.writeFileSync(filePath, payload.file_buffer);
+          console.log(`✓ Saved PDF for meet ${meetId}:`, filePath);
+        } catch (error) {
+          console.warn(`Warning: Could not save PDF file for meet ${meetId}:`, error.message);
+        }
+      }
 
       return res.status(201).json({
         message: "Meet imported",
