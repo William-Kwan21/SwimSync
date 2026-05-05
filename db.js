@@ -6,7 +6,7 @@ async function createAdminConnection(config) {
     host: config.host,
     port: config.port,
     user: config.user,
-    password: config.password
+    password: config.password,
   });
 }
 
@@ -26,7 +26,9 @@ async function ensureUsersTable(admin) {
   `);
 
   try {
-    await admin.query("ALTER TABLE users ADD COLUMN password_hash VARCHAR(255) NULL AFTER email");
+    await admin.query(
+      "ALTER TABLE users ADD COLUMN password_hash VARCHAR(255) NULL AFTER email",
+    );
   } catch (error) {
     if (error.code !== "ER_DUP_FIELDNAME") {
       throw error;
@@ -34,7 +36,9 @@ async function ensureUsersTable(admin) {
   }
 
   try {
-    await admin.query("ALTER TABLE users ADD COLUMN role ENUM('admin','coach','swimmer','parent') NOT NULL DEFAULT 'swimmer' AFTER password_hash");
+    await admin.query(
+      "ALTER TABLE users ADD COLUMN role ENUM('admin','coach','swimmer','parent') NOT NULL DEFAULT 'swimmer' AFTER password_hash",
+    );
   } catch (error) {
     if (error.code !== "ER_DUP_FIELDNAME") {
       throw error;
@@ -42,7 +46,9 @@ async function ensureUsersTable(admin) {
   }
 
   try {
-    await admin.query("ALTER TABLE users ADD COLUMN gender VARCHAR(20) NULL AFTER role");
+    await admin.query(
+      "ALTER TABLE users ADD COLUMN gender VARCHAR(20) NULL AFTER role",
+    );
   } catch (error) {
     if (error.code !== "ER_DUP_FIELDNAME") {
       throw error;
@@ -50,7 +56,9 @@ async function ensureUsersTable(admin) {
   }
 
   try {
-    await admin.query("ALTER TABLE users ADD COLUMN date_of_birth DATE NULL AFTER gender");
+    await admin.query(
+      "ALTER TABLE users ADD COLUMN date_of_birth DATE NULL AFTER gender",
+    );
   } catch (error) {
     if (error.code !== "ER_DUP_FIELDNAME") {
       throw error;
@@ -58,7 +66,9 @@ async function ensureUsersTable(admin) {
   }
 
   try {
-    await admin.query("ALTER TABLE users ADD COLUMN address VARCHAR(255) NULL AFTER date_of_birth");
+    await admin.query(
+      "ALTER TABLE users ADD COLUMN address VARCHAR(255) NULL AFTER date_of_birth",
+    );
   } catch (error) {
     if (error.code !== "ER_DUP_FIELDNAME") {
       throw error;
@@ -68,10 +78,42 @@ async function ensureUsersTable(admin) {
 
 async function seedUsers(admin) {
   const demoUsers = [
-    { name: "Alex Admin", email: "admin@swimsync.com", password: "Admin123!", role: "admin", gender: "male", date_of_birth: "1990-02-01", address: "123 Admin Way" },
-    { name: "Casey Coach", email: "coach@swimsync.com", password: "Coach123!", role: "coach", gender: "female", date_of_birth: "1992-05-12", address: "456 Coach Ave" },
-    { name: "Sam Swimmer", email: "swimmer@swimsync.com", password: "Swimmer123!", role: "swimmer", gender: "female", date_of_birth: "2011-06-14", address: "789 Swim Ln" },
-    { name: "Pat Parent", email: "parent@swimsync.com", password: "Parent123!", role: "parent", gender: "male", date_of_birth: "1985-10-20", address: "321 Parent St" }
+    {
+      name: "Alex Admin",
+      email: "admin@swimsync.com",
+      password: "Admin123!",
+      role: "admin",
+      gender: "male",
+      date_of_birth: "1990-02-01",
+      address: "123 Admin Way",
+    },
+    {
+      name: "Casey Coach",
+      email: "coach@swimsync.com",
+      password: "Coach123!",
+      role: "coach",
+      gender: "female",
+      date_of_birth: "1992-05-12",
+      address: "456 Coach Ave",
+    },
+    {
+      name: "Sam Swimmer",
+      email: "swimmer@swimsync.com",
+      password: "Swimmer123!",
+      role: "swimmer",
+      gender: "female",
+      date_of_birth: "2011-06-14",
+      address: "789 Swim Ln",
+    },
+    {
+      name: "Pat Parent",
+      email: "parent@swimsync.com",
+      password: "Parent123!",
+      role: "parent",
+      gender: "male",
+      date_of_birth: "1985-10-20",
+      address: "321 Parent St",
+    },
   ];
 
   for (const user of demoUsers) {
@@ -94,20 +136,22 @@ async function seedUsers(admin) {
         user.gender,
         user.date_of_birth,
         user.address,
-      ]
+      ],
     );
   }
 }
 
 async function seedRoleTables(admin) {
-  const [allUsers] = await admin.query("SELECT id, role FROM users ORDER BY id ASC");
+  const [allUsers] = await admin.query(
+    "SELECT id, role FROM users ORDER BY id ASC",
+  );
 
   for (const user of allUsers) {
     if (user.role === "swimmer") {
       await admin.query(
         `INSERT IGNORE INTO swimmers (user_id, date_of_birth, gender, skill_level)
          VALUES (?, ?, ?, ?)`,
-        [user.id, "2011-06-14", "Female", "Intermediate"]
+        [user.id, "2011-06-14", "Female", "Intermediate"],
       );
     }
 
@@ -115,7 +159,7 @@ async function seedRoleTables(admin) {
       await admin.query(
         `INSERT IGNORE INTO parents (user_id, phone, emergency_contact)
          VALUES (?, ?, ?)`,
-        [user.id, "555-0101", "Jamie Parent"]
+        [user.id, "555-0101", "Jamie Parent"],
       );
     }
 
@@ -123,7 +167,7 @@ async function seedRoleTables(admin) {
       await admin.query(
         `INSERT IGNORE INTO coaches (user_id, certification, years_experience)
          VALUES (?, ?, ?)`,
-        [user.id, "USA Swimming Level 2", 5]
+        [user.id, "USA Swimming Level 2", 5],
       );
     }
   }
@@ -133,17 +177,21 @@ async function seedParentSwimmerLinks(admin) {
   const [parents] = await admin.query(
     `SELECT p.id, u.email
      FROM parents p
-     JOIN users u ON p.user_id = u.id`
+     JOIN users u ON p.user_id = u.id`,
   );
 
   const [swimmers] = await admin.query(
     `SELECT s.id, u.email
      FROM swimmers s
-     JOIN users u ON s.user_id = u.id`
+     JOIN users u ON s.user_id = u.id`,
   );
 
-  const parentByEmail = new Map(parents.map((parent) => [parent.email, parent.id]));
-  const swimmerByEmail = new Map(swimmers.map((swimmer) => [swimmer.email, swimmer.id]));
+  const parentByEmail = new Map(
+    parents.map((parent) => [parent.email, parent.id]),
+  );
+  const swimmerByEmail = new Map(
+    swimmers.map((swimmer) => [swimmer.email, swimmer.id]),
+  );
 
   const demoParentId = parentByEmail.get("parent@swimsync.com");
   const demoSwimmerId = swimmerByEmail.get("swimmer@swimsync.com");
@@ -152,7 +200,7 @@ async function seedParentSwimmerLinks(admin) {
     await admin.query(
       `INSERT IGNORE INTO parent_swimmers (parent_id, swimmer_id, relationship, is_primary)
        VALUES (?, ?, ?, ?)`,
-      [demoParentId, demoSwimmerId, "guardian", 1]
+      [demoParentId, demoSwimmerId, "guardian", 1],
     );
   }
 }
@@ -162,7 +210,7 @@ async function seedPracticeGroups(admin) {
     { group_name: "Junior 1", level: "Junior" },
     { group_name: "Junior 2", level: "Junior" },
     { group_name: "Senior 1", level: "Senior" },
-    { group_name: "Senior 2", level: "Senior" }
+    { group_name: "Senior 2", level: "Senior" },
   ];
 
   for (const group of defaultGroups) {
@@ -172,7 +220,7 @@ async function seedPracticeGroups(admin) {
        WHERE NOT EXISTS (
          SELECT 1 FROM practice_groups WHERE group_name = ? LIMIT 1
        )`,
-      [group.group_name, group.level, group.group_name]
+      [group.group_name, group.level, group.group_name],
     );
   }
 }
@@ -180,7 +228,7 @@ async function seedPracticeGroups(admin) {
 async function seedSwimmerGroups(admin) {
   const [groupRows] = await admin.query(
     "SELECT id FROM practice_groups WHERE group_name = ? LIMIT 1",
-    ["Junior 1"]
+    ["Junior 1"],
   );
 
   if (groupRows.length === 0) {
@@ -193,7 +241,7 @@ async function seedSwimmerGroups(admin) {
      JOIN users u ON s.user_id = u.id
      WHERE u.email = ?
      LIMIT 1`,
-    ["swimmer@swimsync.com"]
+    ["swimmer@swimsync.com"],
   );
 
   if (swimmerRows.length === 0) {
@@ -204,7 +252,7 @@ async function seedSwimmerGroups(admin) {
     `INSERT INTO swimmer_groups (swimmer_id, group_id)
      VALUES (?, ?)
      ON DUPLICATE KEY UPDATE group_id = VALUES(group_id)`,
-    [swimmerRows[0].id, groupRows[0].id]
+    [swimmerRows[0].id, groupRows[0].id],
   );
 }
 
@@ -510,7 +558,10 @@ async function initDatabase(config) {
   try {
     await admin.query("ALTER TABLE meet_days DROP INDEX uq_meet_days");
   } catch (error) {
-    if (error.code !== "ER_CANT_DROP_FIELD_OR_KEY" && error.code !== "ER_DROP_INDEX_FK") {
+    if (
+      error.code !== "ER_CANT_DROP_FIELD_OR_KEY" &&
+      error.code !== "ER_DROP_INDEX_FK"
+    ) {
       throw error;
     }
   }
@@ -580,9 +631,14 @@ async function initDatabase(config) {
   }
 
   try {
-    await admin.query("ALTER TABLE meet_declarations DROP INDEX uq_meet_declaration");
+    await admin.query(
+      "ALTER TABLE meet_declarations DROP INDEX uq_meet_declaration",
+    );
   } catch (error) {
-    if (error.code !== "ER_CANT_DROP_FIELD_OR_KEY" && error.code !== "ER_DROP_INDEX_FK") {
+    if (
+      error.code !== "ER_CANT_DROP_FIELD_OR_KEY" &&
+      error.code !== "ER_DROP_INDEX_FK"
+    ) {
       throw error;
     }
   }
@@ -612,7 +668,7 @@ async function initDatabase(config) {
     password: config.password,
     database: config.database,
     waitForConnections: true,
-    connectionLimit: 10
+    connectionLimit: 10,
   });
 }
 
