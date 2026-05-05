@@ -173,7 +173,9 @@ function normalizeStroke(stroke) {
 }
 
 function normalizeGender(gender) {
-  const raw = String(gender || "").trim().toLowerCase();
+  const raw = String(gender || "")
+    .trim()
+    .toLowerCase();
   if (!raw) return "";
   if (["m", "male", "boys", "boy", "men", "man"].includes(raw)) {
     return "male";
@@ -406,9 +408,22 @@ function parseCsvFromAnyText(content) {
   const rows = parseCsvToObjects(candidateLines.join("\n"));
   if (!rows.length) return [];
   const knownFields = [
-    "event_name", "event", "name", "stroke", "distance", "distance_meters",
-    "age_group", "gender", "meet_day", "day", "session", "qualifying_time",
-    "time_standard", "cut_time", "is_selected", "selected",
+    "event_name",
+    "event",
+    "name",
+    "stroke",
+    "distance",
+    "distance_meters",
+    "age_group",
+    "gender",
+    "meet_day",
+    "day",
+    "session",
+    "qualifying_time",
+    "time_standard",
+    "cut_time",
+    "is_selected",
+    "selected",
   ];
   const headers = Object.keys(rows[0]).map((h) => h.toLowerCase().trim());
   if (!headers.some((h) => knownFields.includes(h))) return [];
@@ -447,7 +462,7 @@ async function extractTextFromPdfBase64(base64) {
 
 function parseMultipartUpload(req) {
   return new Promise((resolve, reject) => {
-     let Busboy;
+    let Busboy;
     try {
       Busboy = require("busboy");
     } catch (_error) {
@@ -496,7 +511,9 @@ function parseMultipartUpload(req) {
 
       file.on("limit", () => {
         reject(
-          new Error("Uploaded file is too large. Try a smaller PDF or CSV export."),
+          new Error(
+            "Uploaded file is too large. Try a smaller PDF or CSV export.",
+          ),
         );
       });
 
@@ -552,11 +569,13 @@ async function getImportedTextFromPayload(payload) {
   const rawContent = payload && payload.content ? String(payload.content) : "";
   const rawType = payload && payload.file_type ? String(payload.file_type) : "";
   const rawName = payload && payload.file_name ? String(payload.file_name) : "";
-  const rawEncoding = payload && payload.encoding ? String(payload.encoding) : "utf8";
+  const rawEncoding =
+    payload && payload.encoding ? String(payload.encoding) : "utf8";
 
   const lowerType = rawType.trim().toLowerCase();
   const lowerName = rawName.trim().toLowerCase();
-  const isExplicitlyText = lowerType === "text/plain" || lowerType === "text" || !lowerType;
+  const isExplicitlyText =
+    lowerType === "text/plain" || lowerType === "text" || !lowerType;
   const isPdf =
     lowerType === "pdf" ||
     lowerType === "application/pdf" ||
@@ -574,7 +593,9 @@ async function getImportedTextFromPayload(payload) {
     return extractTextFromPdfBase64(rawContent);
   }
 
-  throw new Error("PDF uploads must be sent as a raw PDF file or base64 content");
+  throw new Error(
+    "PDF uploads must be sent as a raw PDF file or base64 content",
+  );
 }
 
 async function extractImportPayload(req) {
@@ -583,13 +604,20 @@ async function extractImportPayload(req) {
   if (contentType.includes("multipart/form-data")) {
     const multipart = await parseMultipartUpload(req);
     const fileBuffer = multipart.file;
-    const fileName = multipart.fileName || multipart.fields.file_name || multipart.fields.filename || "";
+    const fileName =
+      multipart.fileName ||
+      multipart.fields.file_name ||
+      multipart.fields.filename ||
+      "";
     const defaultSwimmerId = multipart.fields.default_swimmer_id
       ? Number(multipart.fields.default_swimmer_id)
       : 0;
 
     if (fileBuffer && fileBuffer.length) {
-      if (fileName.toLowerCase().endsWith(".pdf") || multipart.fileMimeType === "application/pdf") {
+      if (
+        fileName.toLowerCase().endsWith(".pdf") ||
+        multipart.fileMimeType === "application/pdf"
+      ) {
         const content = await getImportedTextFromPayload(fileBuffer);
         return {
           content,
@@ -746,16 +774,29 @@ function normalizeMeetDayEntries(days, fallbackDate) {
     if (typeof day === "string") {
       const meetDay = normalizeDateOnly(day);
       if (!meetDay) return;
-      push({ meet_day: meetDay, session_label: "", age_group: null, gender: null });
+      push({
+        meet_day: meetDay,
+        session_label: "",
+        age_group: null,
+        gender: null,
+      });
       return;
     }
 
-    const meetDay = normalizeDateOnly(day && day.meet_day ? day.meet_day : day && day.day ? day.day : null);
+    const meetDay = normalizeDateOnly(
+      day && day.meet_day ? day.meet_day : day && day.day ? day.day : null,
+    );
     if (!meetDay) return;
 
     push({
       meet_day: meetDay,
-      session_label: normalizeSessionLabel(day && day.session_label ? day.session_label : day && day.session ? day.session : ""),
+      session_label: normalizeSessionLabel(
+        day && day.session_label
+          ? day.session_label
+          : day && day.session
+            ? day.session
+            : "",
+      ),
       age_group: day && day.age_group ? String(day.age_group).trim() : null,
       gender: day && day.gender ? normalizeGender(day.gender) : null,
     });
@@ -763,7 +804,9 @@ function normalizeMeetDayEntries(days, fallbackDate) {
 
   if (!normalized.length) {
     push({
-      meet_day: normalizeDateOnly(fallbackDate) || normalizeDateOnly(new Date().toISOString().slice(0, 10)),
+      meet_day:
+        normalizeDateOnly(fallbackDate) ||
+        normalizeDateOnly(new Date().toISOString().slice(0, 10)),
       session_label: "",
       age_group: null,
       gender: null,
@@ -773,7 +816,9 @@ function normalizeMeetDayEntries(days, fallbackDate) {
   return normalized.sort((a, b) => {
     const dayCmp = String(a.meet_day).localeCompare(String(b.meet_day));
     if (dayCmp !== 0) return dayCmp;
-    return String(a.session_label || "").localeCompare(String(b.session_label || ""));
+    return String(a.session_label || "").localeCompare(
+      String(b.session_label || ""),
+    );
   });
 }
 
@@ -824,7 +869,9 @@ function parseMonthDayCandidate(raw, referenceYear) {
     december: 12,
   };
 
-  const text = String(raw || "").replace(/\s+/g, " ").trim();
+  const text = String(raw || "")
+    .replace(/\s+/g, " ")
+    .trim();
   if (!text) return null;
 
   // Match date ranges like "May 1-3" or "May 1 to 3" or "May 1, 2026"
@@ -838,18 +885,24 @@ function parseMonthDayCandidate(raw, referenceYear) {
   const endDay = match[3] ? Number(match[3]) : null;
   const year = match[4] ? Number(match[4]) : Number(referenceYear);
 
-  if (!month || !Number.isFinite(startDay) || startDay < 1 || startDay > 31 || !Number.isFinite(year)) {
+  if (
+    !month ||
+    !Number.isFinite(startDay) ||
+    startDay < 1 ||
+    startDay > 31 ||
+    !Number.isFinite(year)
+  ) {
     return null;
   }
 
   const startDate = `${String(year).padStart(4, "0")}-${String(month).padStart(2, "0")}-${String(startDay).padStart(2, "0")}`;
-  
+
   // If end date is specified, return range object; otherwise just start date
   if (endDay && Number.isFinite(endDay) && endDay > startDay && endDay <= 31) {
     const endDate = `${String(year).padStart(4, "0")}-${String(month).padStart(2, "0")}-${String(endDay).padStart(2, "0")}`;
     return { start: startDate, end: endDate };
   }
-  
+
   return startDate;
 }
 
@@ -869,7 +922,9 @@ function detectMeetDateFromText(text, options = {}) {
   const prioritized = lines.find(
     (line) =>
       /\b(meet|invite|invitational|championship|classic|open)\b/i.test(line) &&
-      /(January|February|March|April|May|June|July|August|September|October|November|December|Jan|Feb|Mar|Apr|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)/i.test(line),
+      /(January|February|March|April|May|June|July|August|September|October|November|December|Jan|Feb|Mar|Apr|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)/i.test(
+        line,
+      ),
   );
   if (prioritized) {
     const parsed = parseMonthDayCandidate(prioritized, referenceYear);
@@ -879,7 +934,8 @@ function detectMeetDateFromText(text, options = {}) {
     }
   }
 
-  const monthRangeRegex = /\b(January|February|March|April|May|June|July|August|September|October|November|December|Jan|Feb|Mar|Apr|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)\s+\d{1,2}(?:\s*(?:-|to|through)\s*\d{1,2})?(?:,?\s+\d{4})?\b/gi;
+  const monthRangeRegex =
+    /\b(January|February|March|April|May|June|July|August|September|October|November|December|Jan|Feb|Mar|Apr|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)\s+\d{1,2}(?:\s*(?:-|to|through)\s*\d{1,2})?(?:,?\s+\d{4})?\b/gi;
   let monthMatch;
   while ((monthMatch = monthRangeRegex.exec(rawText)) !== null) {
     const parsed = parseMonthDayCandidate(monthMatch[0], referenceYear);
@@ -928,11 +984,14 @@ function detectMeetNameFromText(text, options = {}) {
     .filter(Boolean)
     .slice(0, 120);
 
-  const banned = /\b(order of events|session\s*\d+|qualifying|time standards|warm[ -]?up|entry deadline|hy[- ]?tek|sanction|psych sheet|results?)\b/i;
+  const banned =
+    /\b(order of events|session\s*\d+|qualifying|time standards|warm[ -]?up|entry deadline|hy[- ]?tek|sanction|psych sheet|results?)\b/i;
   const preferred = lines.find(
     (line) =>
       !banned.test(line) &&
-      /\b(meet|invite|invitational|championship|classic|open|trials)\b/i.test(line) &&
+      /\b(meet|invite|invitational|championship|classic|open|trials)\b/i.test(
+        line,
+      ) &&
       line.length >= 8,
   );
 
@@ -955,15 +1014,17 @@ function extractEventNumberFromText(text) {
 }
 
 function extractAgeGroupFromText(text) {
-  const raw = String(text || "").replace(/\s+/g, " ").trim();
+  const raw = String(text || "")
+    .replace(/\s+/g, " ")
+    .trim();
   if (!raw) return null;
 
   const patterns = [
-    /\b(\d{1,2}\s*(?:-|to|\/|\s)\s*\d{1,2})\b/i,  // "13-14", "13 - 14", "13 to 14", "13 14"
-    /\b(\d{1,2}\s*(?:&|and)\s*under)\b/i,        // "12 & Under", "12 & under"
-    /\b(\d{1,2}\s*(?:&|and)\s*over)\b/i,         // "13 & Over", "13 & over"
-    /\b(\d{1,2}\s*U(?:nder)?)\b/i,               // "12U", "12Under"
-    /\b(open|senior|junior)\b/i,                // "Open", "Senior", "Junior"
+    /\b(\d{1,2}\s*(?:-|to|\/|\s)\s*\d{1,2})\b/i, // "13-14", "13 - 14", "13 to 14", "13 14"
+    /\b(\d{1,2}\s*(?:&|and)\s*under)\b/i, // "12 & Under", "12 & under"
+    /\b(\d{1,2}\s*(?:&|and)\s*over)\b/i, // "13 & Over", "13 & over"
+    /\b(\d{1,2}\s*U(?:nder)?)\b/i, // "12U", "12Under"
+    /\b(open|senior|junior)\b/i, // "Open", "Senior", "Junior"
   ];
 
   for (const pattern of patterns) {
@@ -1042,7 +1103,9 @@ function extractGenderFromText(text) {
 }
 
 function buildEventName(eventNumber, nameText) {
-  const clean = String(nameText || "").replace(/\s+/g, " ").trim();
+  const clean = String(nameText || "")
+    .replace(/\s+/g, " ")
+    .trim();
   if (!clean) return "";
   if (!eventNumber) return clean;
   if (/^event\s*#?\s*\d{1,3}\b/i.test(clean)) {
@@ -1052,7 +1115,9 @@ function buildEventName(eventNumber, nameText) {
 }
 
 function limitTextLength(value, maxLength) {
-  const text = String(value || "").replace(/\s+/g, " ").trim();
+  const text = String(value || "")
+    .replace(/\s+/g, " ")
+    .trim();
   if (!Number.isFinite(maxLength) || maxLength <= 0) {
     return text;
   }
@@ -1106,7 +1171,12 @@ function getDayOffsetFromDate(dateOnly, dayName) {
     saturday: 6,
   };
 
-  const target = dayIndexMap[String(dayName || "").trim().toLowerCase()];
+  const target =
+    dayIndexMap[
+      String(dayName || "")
+        .trim()
+        .toLowerCase()
+    ];
   if (target == null) return 0;
 
   const date = new Date(`${base}T00:00:00`);
@@ -1131,11 +1201,15 @@ function splitInviteSessionBlocks(content) {
     });
   };
 
-  console.log("🔍 splitInviteSessionBlocks input (first 500 chars):", text.slice(0, 500));
+  console.log(
+    "🔍 splitInviteSessionBlocks input (first 500 chars):",
+    text.slice(0, 500),
+  );
 
   // Pattern 1: "Friday AM Session" or "Friday AM" or "Friday Afternoon" or "Friday PM Session" or "Saturday PM Session"
   // Updated: removed trailing \b to handle more variations
-  const headingRegex = /\b(Friday|Saturday|Sunday)\s+(AM|PM|MID(?:-?DAY)?|AFTERNOON|MORNING)(?:\s+Session)?/gi;
+  const headingRegex =
+    /\b(Friday|Saturday|Sunday)\s+(AM|PM|MID(?:-?DAY)?|AFTERNOON|MORNING)(?:\s+Session)?/gi;
   let match;
   let pattern1Count = 0;
   while ((match = headingRegex.exec(text))) {
@@ -1145,7 +1219,8 @@ function splitInviteSessionBlocks(content) {
   }
 
   // Pattern 2: "Session 3: Saturday MID" or "Session 1: Friday Afternoon"
-  const summaryRegex = /\bSession\s*\d+\s*:\s*(Friday|Saturday|Sunday)\s*(AM|PM|MID(?:-?DAY)?|AFTERNOON|MORNING)?/gi;
+  const summaryRegex =
+    /\bSession\s*\d+\s*:\s*(Friday|Saturday|Sunday)\s*(AM|PM|MID(?:-?DAY)?|AFTERNOON|MORNING)?/gi;
   let pattern2Count = 0;
   while ((match = summaryRegex.exec(text))) {
     pattern2Count++;
@@ -1158,16 +1233,26 @@ function splitInviteSessionBlocks(content) {
   let pattern2bCount = 0;
   while ((match = dayHeaderRegex.exec(text))) {
     pattern2bCount++;
-    console.log("🔍 Pattern 2b (day header):", match[1], "at index", match.index);
+    console.log(
+      "🔍 Pattern 2b (day header):",
+      match[1],
+      "at index",
+      match.index,
+    );
     // For day-only headers, we'll treat as default "PM" or try to infer from context
-    addMatch(match.index + match[0].indexOf(match[1]), match[1], match[1].length, "");
+    addMatch(
+      match.index + match[0].indexOf(match[1]),
+      match[1],
+      match[1].length,
+      "",
+    );
   }
 
   // Pattern 3: "Warm-Up 7:15 AM" or "Warm-up: 7:15 AM" (detect period from warmup times)
   const warmupRegex = /\bWarm[\s-]?[Uu]p\s*:?\s*(\d{1,2}):(\d{2})\s*(AM|PM)/gi;
   let pattern3Count = 0;
   const dayMentions = [];
- const dayRegexGlobal = /(Friday|Saturday|Sunday)/gi;
+  const dayRegexGlobal = /(Friday|Saturday|Sunday)/gi;
   while ((match = dayRegexGlobal.exec(text))) {
     dayMentions.push({ index: match.index, dayName: match[1] });
   }
@@ -1187,7 +1272,14 @@ function splitInviteSessionBlocks(content) {
   while ((match = warmupRegex.exec(text))) {
     pattern3Count++;
     const dayName = resolveDayAtIndex(match.index);
-    console.log("🔍 Pattern 3 (warmup):", match[0], "-> day:", dayName, "time:", match[3]);
+    console.log(
+      "🔍 Pattern 3 (warmup):",
+      match[0],
+      "-> day:",
+      dayName,
+      "time:",
+      match[3],
+    );
     addMatch(match.index, dayName, match[0].length, match[3]);
   }
 
@@ -1197,10 +1289,18 @@ function splitInviteSessionBlocks(content) {
   while ((match = startRegex.exec(text))) {
     pattern4Count++;
     const dayName = resolveDayAtIndex(match.index);
-    console.log("🔍 Pattern 4 (start time):", match[0], "-> day:", dayName, "time:", match[3]);
+    console.log(
+      "🔍 Pattern 4 (start time):",
+      match[0],
+      "-> day:",
+      dayName,
+      "time:",
+      match[3],
+    );
     addMatch(match.index, dayName, match[0].length, match[3]);
   }
- const concatenatedRegex = /\b(Friday|Saturday|Sunday)(AM|PM|MID(?:-?DAY)?|AFTERNOON|MORNING)/gi;
+  const concatenatedRegex =
+    /\b(Friday|Saturday|Sunday)(AM|PM|MID(?:-?DAY)?|AFTERNOON|MORNING)/gi;
   let pattern5Count = 0;
   while ((match = concatenatedRegex.exec(text))) {
     const charBefore = match.index > 0 ? text[match.index - 1] : "\n";
@@ -1210,7 +1310,14 @@ function splitInviteSessionBlocks(content) {
       addMatch(match.index, match[1], match[0].length, match[2]);
     }
   }
-  console.log("🔍 Pattern matches found:", { pattern1: pattern1Count, pattern2: pattern2Count, pattern2b: pattern2bCount, pattern3: pattern3Count, pattern4: pattern4Count, totalMatches: matches.length });
+  console.log("🔍 Pattern matches found:", {
+    pattern1: pattern1Count,
+    pattern2: pattern2Count,
+    pattern2b: pattern2bCount,
+    pattern3: pattern3Count,
+    pattern4: pattern4Count,
+    totalMatches: matches.length,
+  });
 
   if (matches.length > 1) {
     matches.sort((a, b) => a.index - b.index);
@@ -1234,8 +1341,10 @@ function splitInviteSessionBlocks(content) {
 
   // FALLBACK: If no sessions detected, try to find day names in the text as fallback
   if (!deduped.length) {
-    console.log("🔍 No sessions detected with main patterns. Trying fallback...");
-    
+    console.log(
+      "🔍 No sessions detected with main patterns. Trying fallback...",
+    );
+
     // Try to find at least one day mention as a fallback
     const dayFallbackMatch = /\b(Friday|Saturday|Sunday)\b/i.exec(text);
     if (dayFallbackMatch) {
@@ -1244,7 +1353,7 @@ function splitInviteSessionBlocks(content) {
         index: 0,
         dayName: dayFallbackMatch[1],
         sessionLabel: "Session",
-        length: 0
+        length: 0,
       });
     } else {
       // Last resort: assume Saturday PM
@@ -1253,7 +1362,7 @@ function splitInviteSessionBlocks(content) {
         index: 0,
         dayName: "Saturday",
         sessionLabel: "PM",
-        length: 0
+        length: 0,
       });
     }
   }
@@ -1267,9 +1376,15 @@ function splitInviteSessionBlocks(content) {
     const sessionBlock = {
       dayName: current.dayName,
       sessionLabel: current.sessionLabel,
-      text: text.slice(current.index + current.length, next ? next.index : text.length).trim(),
+      text: text
+        .slice(current.index + current.length, next ? next.index : text.length)
+        .trim(),
     };
-    console.log("🔍 Session block", index, ":", { dayName: sessionBlock.dayName, sessionLabel: sessionBlock.sessionLabel, textLength: sessionBlock.text.length });
+    console.log("🔍 Session block", index, ":", {
+      dayName: sessionBlock.dayName,
+      sessionLabel: sessionBlock.sessionLabel,
+      textLength: sessionBlock.text.length,
+    });
     return sessionBlock;
   });
 
@@ -1277,7 +1392,9 @@ function splitInviteSessionBlocks(content) {
 }
 
 function extractInviteSessionDaysFromText(content, meetDate) {
-  const text = String(content || "").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+  const text = String(content || "")
+    .replace(/\r\n/g, "\n")
+    .replace(/\r/g, "\n");
   const matches = [];
   const seen = new Set();
 
@@ -1301,13 +1418,15 @@ function extractInviteSessionDaysFromText(content, meetDate) {
     });
   };
 
-  const headingRegex = /\b(Friday|Saturday|Sunday)\s+(AM|PM|MID(?:-?DAY)?|AFTERNOON|MORNING)(?:\s+Session)?/gi;
+  const headingRegex =
+    /\b(Friday|Saturday|Sunday)\s+(AM|PM|MID(?:-?DAY)?|AFTERNOON|MORNING)(?:\s+Session)?/gi;
   let match;
   while ((match = headingRegex.exec(text)) !== null) {
     addMatch(match.index, match[1], match[2]);
   }
 
-  const summaryRegex = /\bSession\s*\d+\s*:\s*(Friday|Saturday|Sunday)\s*(AM|PM|MID(?:-?DAY)?|AFTERNOON|MORNING)?/gi;
+  const summaryRegex =
+    /\bSession\s*\d+\s*:\s*(Friday|Saturday|Sunday)\s*(AM|PM|MID(?:-?DAY)?|AFTERNOON|MORNING)?/gi;
   while ((match = summaryRegex.exec(text)) !== null) {
     addMatch(match.index, match[1], match[2] || "PM");
   }
@@ -1317,7 +1436,9 @@ function extractInviteSessionDaysFromText(content, meetDate) {
 }
 
 function extractWarmupTimeFromBlock(blockText) {
-  const warmupMatch = String(blockText || "").match(/\bwarm[- ]?up[:\s]+([^\n]*)/i);
+  const warmupMatch = String(blockText || "").match(
+    /\bwarm[- ]?up[:\s]+([^\n]*)/i,
+  );
   if (warmupMatch && warmupMatch[1]) {
     const warmupText = warmupMatch[1].trim();
     if (warmupText) {
@@ -1328,14 +1449,19 @@ function extractWarmupTimeFromBlock(blockText) {
 }
 
 function parseInviteEventRowsFromBlock(blockText) {
-  const rawText = String(blockText || "").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+  const rawText = String(blockText || "")
+    .replace(/\r\n/g, "\n")
+    .replace(/\r/g, "\n");
   const normalized = rawText
     .replace(/\bGirls\s+Event\s+Boys\b/gi, " ")
     .replace(/\bGirls\s+Event\b|\bBoys\b/gi, " ")
     .replace(/\bwarm[- ]?up\s*:?.*$/gim, " ")
     .replace(/\bstart\s*:?\s*\d{1,2}:\d{2}\s*(am|pm).*$/gim, " ")
     .replace(/\b15\s*minute\s*break\b/gi, " ")
-    .replace(/\b\d{4,}\s*(?:meet|session|times?\s+may\s+be|limited|provided|heats?).*$/gim, " ")
+    .replace(
+      /\b\d{4,}\s*(?:meet|session|times?\s+may\s+be|limited|provided|heats?).*$/gim,
+      " ",
+    )
     .replace(/\*+/g, " ")
     .replace(/[\u2022•·]/g, " ")
     .replace(/[–—]/g, "-")
@@ -1343,7 +1469,17 @@ function parseInviteEventRowsFromBlock(blockText) {
     .trim();
 
   const tokens = normalized.split(" ").filter(Boolean);
-  const distanceSet = new Set(["25", "50", "100", "200", "400", "500", "800", "1000", "1500"]);
+  const distanceSet = new Set([
+    "25",
+    "50",
+    "100",
+    "200",
+    "400",
+    "500",
+    "800",
+    "1000",
+    "1500",
+  ]);
   const isStandaloneNumber = (token) => /^\d{1,3}$/.test(token);
   const isDistance = (token) => distanceSet.has(token);
   const events = [];
@@ -1360,7 +1496,11 @@ function parseInviteEventRowsFromBlock(blockText) {
     }
 
     // Filter out metadata/instruction lines
-    if (/\b(emailed|hy-tek|deck|entries|allowed|mail|payment|entry\s+fee|surcharge|original\s+email|contact|questions|information|officials|heats)\b/i.test(cleanDescriptor)) {
+    if (
+      /\b(emailed|hy-tek|deck|entries|allowed|mail|payment|entry\s+fee|surcharge|original\s+email|contact|questions|information|officials|heats)\b/i.test(
+        cleanDescriptor,
+      )
+    ) {
       return;
     }
 
@@ -1376,9 +1516,14 @@ function parseInviteEventRowsFromBlock(blockText) {
       .trim();
 
     // Some OCR lines begin with "& Over" after removing gender. Treat that as Open.
-    const descriptorForParsing = descriptorNoGender.replace(/^&\s*over\b/i, "Open");
+    const descriptorForParsing = descriptorNoGender.replace(
+      /^&\s*over\b/i,
+      "Open",
+    );
 
-    const distanceWithUnits = descriptorForParsing.match(/\b(\d{2,4})\s*(?:m|meter|meters|yd|yard|yards)\b/i);
+    const distanceWithUnits = descriptorForParsing.match(
+      /\b(\d{2,4})\s*(?:m|meter|meters|yd|yard|yards)\b/i,
+    );
     const distanceNoUnits = descriptorForParsing.match(
       /\b(25|50|100|200|400|500|800|1000|1500)\b\s*(?=(?:freestyle|free|backstroke|back|breaststroke|breast|butterfly|fly|individual\s+medley|im|relay)\b)/i,
     );
@@ -1414,21 +1559,27 @@ function parseInviteEventRowsFromBlock(blockText) {
         /\b(\d{1,2}\s*(?:-|to|\/)\s*\d{1,2}|\d{1,2}\s*(?:&|and)?\s*(?:under|over|u|o)|open|senior|junior)\b/i,
       );
       if (ageHintMatch) {
-        ageGroup = extractAgeGroupFromText(ageHintMatch[1]) || String(ageHintMatch[1]).trim();
+        ageGroup =
+          extractAgeGroupFromText(ageHintMatch[1]) ||
+          String(ageHintMatch[1]).trim();
       }
     }
     const normalizedGender = normalizeGender(gender);
-    const genderCapitalized = normalizedGender ? normalizedGender.charAt(0).toUpperCase() + normalizedGender.slice(1) : "";
-    
+    const genderCapitalized = normalizedGender
+      ? normalizedGender.charAt(0).toUpperCase() + normalizedGender.slice(1)
+      : "";
+
     // Build event name: gender + age_group + distance + stroke
     const eventNameParts = [];
     if (genderCapitalized) eventNameParts.push(genderCapitalized);
     if (ageGroup) eventNameParts.push(ageGroup);
     if (distanceMeters) eventNameParts.push(`${distanceMeters}m`);
-    if (stroke) eventNameParts.push(stroke.charAt(0).toUpperCase() + stroke.slice(1));
-    const eventNameBuilt = eventNameParts.length > 0 
-      ? eventNameParts.join(" ")
-      : descriptorForParsing;
+    if (stroke)
+      eventNameParts.push(stroke.charAt(0).toUpperCase() + stroke.slice(1));
+    const eventNameBuilt =
+      eventNameParts.length > 0
+        ? eventNameParts.join(" ")
+        : descriptorForParsing;
 
     console.log("🔍 Built event:", {
       descriptor: descriptorForParsing.slice(0, 60),
@@ -1436,7 +1587,7 @@ function parseInviteEventRowsFromBlock(blockText) {
       distanceMeters,
       stroke,
       genderCapitalized,
-      eventNameBuilt
+      eventNameBuilt,
     });
 
     events.push({
@@ -1500,23 +1651,34 @@ function parseInviteEventRowsFromBlock(blockText) {
       continue;
     }
 
-    const looseEventRegex = /(?:^|\s)(?:(girls?|boys?|female|male)\s+)?((?:\d{1,2}\s*(?:&\s*under|&\s*over|-|to|\/)?\s*\d{0,2}|open|senior|junior)\b)?\s*(\d{2,4})\s*(?:m|meter|meters|yd|yard|yards)?\s*(freestyle|free|backstroke|back|breaststroke|breast|butterfly|fly|individual\s+medley|im|relay)\b/gi;
+    const looseEventRegex =
+      /(?:^|\s)(?:(girls?|boys?|female|male)\s+)?((?:\d{1,2}\s*(?:&\s*under|&\s*over|-|to|\/)?\s*\d{0,2}|open|senior|junior)\b)?\s*(\d{2,4})\s*(?:m|meter|meters|yd|yard|yards)?\s*(freestyle|free|backstroke|back|breaststroke|breast|butterfly|fly|individual\s+medley|im|relay)\b/gi;
     let looseMatch;
     while ((looseMatch = looseEventRegex.exec(line)) !== null) {
       const gender = looseMatch[1] || null;
-      const ageGroup = looseMatch[2] ? extractAgeGroupFromText(looseMatch[2]) || String(looseMatch[2]).trim() : null;
+      const ageGroup = looseMatch[2]
+        ? extractAgeGroupFromText(looseMatch[2]) || String(looseMatch[2]).trim()
+        : null;
       const distanceMeters = Number(looseMatch[3]);
       const strokeRaw = String(looseMatch[4] || "").trim();
       const normalizedGender = gender ? normalizeGender(gender) : null;
-      const genderCapitalized = normalizedGender ? normalizedGender.charAt(0).toUpperCase() + normalizedGender.slice(1) : "";
+      const genderCapitalized = normalizedGender
+        ? normalizedGender.charAt(0).toUpperCase() + normalizedGender.slice(1)
+        : "";
       const eventNameParts = [];
 
       if (genderCapitalized) eventNameParts.push(genderCapitalized);
       if (ageGroup) eventNameParts.push(ageGroup);
-      if (Number.isFinite(distanceMeters)) eventNameParts.push(`${distanceMeters}m`);
-      if (strokeRaw) eventNameParts.push(strokeRaw.charAt(0).toUpperCase() + strokeRaw.slice(1));
+      if (Number.isFinite(distanceMeters))
+        eventNameParts.push(`${distanceMeters}m`);
+      if (strokeRaw)
+        eventNameParts.push(
+          strokeRaw.charAt(0).toUpperCase() + strokeRaw.slice(1),
+        );
 
-      const eventName = eventNameParts.length ? eventNameParts.join(" ") : String(line || "").trim();
+      const eventName = eventNameParts.length
+        ? eventNameParts.join(" ")
+        : String(line || "").trim();
       const dedupeKey = `${eventName.toLowerCase()}|${normalizedGender || ""}|${ageGroup || ""}|${Number.isFinite(distanceMeters) ? distanceMeters : ""}`;
       if (seen.has(dedupeKey)) {
         continue;
@@ -1526,7 +1688,9 @@ function parseInviteEventRowsFromBlock(blockText) {
       events.push({
         event_name: limitTextLength(eventName, 150),
         stroke: strokeRaw ? normalizeStroke(strokeRaw) : null,
-        distance_meters: Number.isFinite(distanceMeters) ? distanceMeters : null,
+        distance_meters: Number.isFinite(distanceMeters)
+          ? distanceMeters
+          : null,
         age_group: ageGroup,
         gender: normalizedGender,
         qualifying_time_seconds: null,
@@ -1548,7 +1712,7 @@ function parseInviteEventRowsFromBlock(blockText) {
     }
 
     const oddNumber = Number(tokens[index]);
-    
+
     // Find next non-distance number (the other gender's event number)
     let nextNumberIndex = -1;
     for (let i = index + 1; i < tokens.length; i++) {
@@ -1557,7 +1721,7 @@ function parseInviteEventRowsFromBlock(blockText) {
         break;
       }
     }
-    
+
     if (nextNumberIndex < 0) {
       break;
     }
@@ -1583,23 +1747,34 @@ function parseInviteEventRowsFromBlock(blockText) {
 
   // Final fallback: parse looser event lines such as "Girls 13-14 50 Freestyle"
   for (const line of lines) {
-    const looseEventRegex = /(?:^|\s)(?:(girls?|boys?|female|male)\s+)?((?:\d{1,2}\s*(?:&\s*under|&\s*over|-|to|\/)?\s*\d{0,2}|open|senior|junior)\b)?\s*(\d{2,4})\s*(?:m|meter|meters|yd|yard|yards)?\s*(freestyle|free|backstroke|back|breaststroke|breast|butterfly|fly|individual\s+medley|im|relay)\b/gi;
+    const looseEventRegex =
+      /(?:^|\s)(?:(girls?|boys?|female|male)\s+)?((?:\d{1,2}\s*(?:&\s*under|&\s*over|-|to|\/)?\s*\d{0,2}|open|senior|junior)\b)?\s*(\d{2,4})\s*(?:m|meter|meters|yd|yard|yards)?\s*(freestyle|free|backstroke|back|breaststroke|breast|butterfly|fly|individual\s+medley|im|relay)\b/gi;
     let looseMatch;
     while ((looseMatch = looseEventRegex.exec(line)) !== null) {
       const gender = looseMatch[1] || null;
-      const ageGroup = looseMatch[2] ? extractAgeGroupFromText(looseMatch[2]) || String(looseMatch[2]).trim() : null;
+      const ageGroup = looseMatch[2]
+        ? extractAgeGroupFromText(looseMatch[2]) || String(looseMatch[2]).trim()
+        : null;
       const distanceMeters = Number(looseMatch[3]);
       const strokeRaw = String(looseMatch[4] || "").trim();
       const normalizedGender = gender ? normalizeGender(gender) : null;
-      const genderCapitalized = normalizedGender ? normalizedGender.charAt(0).toUpperCase() + normalizedGender.slice(1) : "";
+      const genderCapitalized = normalizedGender
+        ? normalizedGender.charAt(0).toUpperCase() + normalizedGender.slice(1)
+        : "";
       const eventNameParts = [];
 
       if (genderCapitalized) eventNameParts.push(genderCapitalized);
       if (ageGroup) eventNameParts.push(ageGroup);
-      if (Number.isFinite(distanceMeters)) eventNameParts.push(`${distanceMeters}m`);
-      if (strokeRaw) eventNameParts.push(strokeRaw.charAt(0).toUpperCase() + strokeRaw.slice(1));
+      if (Number.isFinite(distanceMeters))
+        eventNameParts.push(`${distanceMeters}m`);
+      if (strokeRaw)
+        eventNameParts.push(
+          strokeRaw.charAt(0).toUpperCase() + strokeRaw.slice(1),
+        );
 
-      const eventName = eventNameParts.length ? eventNameParts.join(" ") : String(line || "").trim();
+      const eventName = eventNameParts.length
+        ? eventNameParts.join(" ")
+        : String(line || "").trim();
       const dedupeKey = `${eventName.toLowerCase()}|${normalizedGender || ""}|${ageGroup || ""}|${Number.isFinite(distanceMeters) ? distanceMeters : ""}`;
       if (seen.has(dedupeKey)) {
         continue;
@@ -1609,7 +1784,9 @@ function parseInviteEventRowsFromBlock(blockText) {
       events.push({
         event_name: limitTextLength(eventName, 150),
         stroke: strokeRaw ? normalizeStroke(strokeRaw) : null,
-        distance_meters: Number.isFinite(distanceMeters) ? distanceMeters : null,
+        distance_meters: Number.isFinite(distanceMeters)
+          ? distanceMeters
+          : null,
         age_group: ageGroup,
         gender: normalizedGender,
         qualifying_time_seconds: null,
@@ -1623,33 +1800,43 @@ function parseInviteEventRowsFromBlock(blockText) {
 }
 
 function parseInviteSessionEventsFromText(content, options = {}) {
-  let meetDate = options.meet_date ? options.meet_date : detectMeetDateFromText(content, options);
-  
+  let meetDate = options.meet_date
+    ? options.meet_date
+    : detectMeetDateFromText(content, options);
+
   // Handle date range objects (e.g., { start: "2026-05-01", end: "2026-05-03" })
   if (meetDate && typeof meetDate === "object" && meetDate.start) {
     meetDate = meetDate.start;
     console.log("🔍 Using start date from range:", meetDate);
   }
-  
+
   meetDate = normalizeDateOnly(meetDate);
-  
+
   // First, get ALL 7 sessions from the fallback extractor (this is more reliable)
   const allSessions = extractInviteSessionDaysFromText(content, meetDate);
-  console.log("🔍 extractInviteSessionDaysFromText found", allSessions.length, "sessions:", allSessions.map(s => ({
-    meet_day: s.meet_day,
-    session_label: s.session_label
-  })));
+  console.log(
+    "🔍 extractInviteSessionDaysFromText found",
+    allSessions.length,
+    "sessions:",
+    allSessions.map((s) => ({
+      meet_day: s.meet_day,
+      session_label: s.session_label,
+    })),
+  );
 
   if (!allSessions.length) {
     return { days: [], events: [] };
   }
 
-  const text = String(content || "").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+  const text = String(content || "")
+    .replace(/\r\n/g, "\n")
+    .replace(/\r/g, "\n");
   const events = [];
 
   // Now split the text into blocks using these 7 session markers
   const sessionMarkers = [];
-  const headingRegex = /\b(Friday|Saturday|Sunday)\s+(AM|PM|MID(?:-?DAY)?|AFTERNOON|MORNING)(?:\s+Session)?\b/gi;
+  const headingRegex =
+    /\b(Friday|Saturday|Sunday)\s+(AM|PM|MID(?:-?DAY)?|AFTERNOON|MORNING)(?:\s+Session)?\b/gi;
   let match;
   while ((match = headingRegex.exec(text)) !== null) {
     const dayName = match[1];
@@ -1659,7 +1846,7 @@ function parseInviteSessionEventsFromText(content, options = {}) {
     sessionMarkers.push({
       index: match.index,
       key,
-      match: match[0]
+      match: match[0],
     });
   }
 
@@ -1668,35 +1855,66 @@ function parseInviteSessionEventsFromText(content, options = {}) {
   // For each session from allSessions, extract events from nearby text
   allSessions.forEach((session, sessionIndex) => {
     const sessionLabel = session.session_label;
-    const matchingMarker = sessionMarkers.find(m => m.key === sessionLabel);
-    
+    const matchingMarker = sessionMarkers.find((m) => m.key === sessionLabel);
+
     if (matchingMarker) {
       // Find the start and end of this session's text block
       const blockStart = matchingMarker.index + matchingMarker.match.length;
-      const nextMarker = sessionMarkers.find(m => m.index > matchingMarker.index);
+      const nextMarker = sessionMarkers.find(
+        (m) => m.index > matchingMarker.index,
+      );
       const blockEnd = nextMarker ? nextMarker.index : text.length;
       const blockText = text.slice(blockStart, blockEnd);
 
-      console.log("🔍 Extracting events for session:", sessionLabel, "block length:", blockText.length);
+      console.log(
+        "🔍 Extracting events for session:",
+        sessionLabel,
+        "block length:",
+        blockText.length,
+      );
 
-      const blockEvents = parseInviteEventRowsFromBlock(blockText).map((event) => ({
-        ...event,
-        session_label: sessionLabel,
-        meet_day: session.meet_day,
-        age_group: event.age_group || session.age_group || sessionAgeGroup || null,
-        gender: event.gender || null,
-        event_name: limitTextLength(`[${sessionLabel}] ${event.event_name}`, 500),
-      }));
+      const blockEvents = parseInviteEventRowsFromBlock(blockText).map(
+        (event) => ({
+          ...event,
+          session_label: sessionLabel,
+          meet_day: session.meet_day,
+          age_group:
+            event.age_group || session.age_group || sessionAgeGroup || null,
+          gender: event.gender || null,
+          event_name: limitTextLength(
+            `[${sessionLabel}] ${event.event_name}`,
+            500,
+          ),
+        }),
+      );
 
-      console.log("🔍 Session", sessionLabel, "-> extracted", blockEvents.length, "events");
+      console.log(
+        "🔍 Session",
+        sessionLabel,
+        "-> extracted",
+        blockEvents.length,
+        "events",
+      );
       events.push(...blockEvents);
     }
   });
 
   const normalizedDays = normalizeMeetDayEntries(allSessions, meetDate);
 
-  console.log("🔍 parseInviteSessionEventsFromText returning:", normalizedDays.length, "days,", events.length, "events");
-  console.log("🔍 Days returned:", normalizedDays.map(d => ({ meet_day: d.meet_day, session_label: d.session_label })));
+  console.log(
+    "🔍 parseInviteSessionEventsFromText returning:",
+    normalizedDays.length,
+    "days,",
+    events.length,
+    "events",
+  );
+  console.log(
+    "🔍 Days returned:",
+    normalizedDays.map((d) => ({
+      meet_day: d.meet_day,
+      session_label: d.session_label,
+    })),
+  );
   return { days: normalizedDays, events };
 }
 
@@ -1732,7 +1950,9 @@ function parseMeetEventsFromPlainText(content) {
   ];
 
   function parseDistanceFromName(rawName) {
-    const withUnits = rawName.match(/\b(\d{2,4})\s*(?:m|meter|meters|yd|yard|yards)\b/i);
+    const withUnits = rawName.match(
+      /\b(\d{2,4})\s*(?:m|meter|meters|yd|yard|yards)\b/i,
+    );
     if (withUnits) {
       const parsed = Number(withUnits[1]);
       return Number.isFinite(parsed) ? parsed : null;
@@ -1759,7 +1979,9 @@ function parseMeetEventsFromPlainText(content) {
       return;
     }
 
-    const hasStrokeKeyword = strokePatterns.some((item) => item.re.test(cleanName));
+    const hasStrokeKeyword = strokePatterns.some((item) =>
+      item.re.test(cleanName),
+    );
     const hasDistanceKeyword =
       /\b\d{2,4}\s*(?:m|meter|meters|yd|yard|yards)\b/i.test(cleanName) ||
       /\b(25|50|100|200|400|500|800|1000|1500)\b/i.test(cleanName);
@@ -1822,12 +2044,17 @@ function parseMeetEventsFromPlainText(content) {
     if (!Number.isFinite(n) || n <= 0) {
       continue;
     }
-    markers.push({ number: n, start: markerMatch.index, end: markerRegex.lastIndex });
+    markers.push({
+      number: n,
+      start: markerMatch.index,
+      end: markerRegex.lastIndex,
+    });
   }
 
   for (let i = 0; i < markers.length; i += 1) {
     const current = markers[i];
-    const nextStart = i + 1 < markers.length ? markers[i + 1].start : compact.length;
+    const nextStart =
+      i + 1 < markers.length ? markers[i + 1].start : compact.length;
     const snippet = compact
       .slice(current.end, Math.min(nextStart, current.end + 220))
       .replace(/\s+/g, " ")
@@ -1877,20 +2104,31 @@ function parseMeetFileContent(content, options = {}) {
   if (!Array.isArray(payloadRows) || payloadRows.length === 0) {
     console.log("🔍 No CSV/JSON rows found, trying invite parser");
     let detectedDate =
-      detectMeetDateFromText(text, options) || normalizeDateOnly(new Date().toISOString().slice(0, 10));
-    
+      detectMeetDateFromText(text, options) ||
+      normalizeDateOnly(new Date().toISOString().slice(0, 10));
+
     // Handle date range object (e.g., { start: "2026-05-01", end: "2026-05-03" })
-    if (detectedDate && typeof detectedDate === "object" && detectedDate.start) {
+    if (
+      detectedDate &&
+      typeof detectedDate === "object" &&
+      detectedDate.start
+    ) {
       console.log("🔍 Detected date range:", detectedDate);
       detectedDate = detectedDate.start;
     }
-    
+
     const inviteParsed = parseInviteSessionEventsFromText(text, {
       ...options,
       meet_date: detectedDate,
     });
     if (inviteParsed.events.length) {
-      console.log("🔍 Invite parser succeeded with", inviteParsed.events.length, "events and", inviteParsed.days.length, "days");
+      console.log(
+        "🔍 Invite parser succeeded with",
+        inviteParsed.events.length,
+        "events and",
+        inviteParsed.days.length,
+        "days",
+      );
       return {
         meet_name: detectMeetNameFromText(text, options),
         meet_date: detectedDate,
@@ -1957,9 +2195,16 @@ function parseMeetFileContent(content, options = {}) {
     if (meetDay) {
       dayEntries.push({
         meet_day: meetDay,
-        session_label: firstNonEmpty(row, ["session_label", "session", "session_name"], ""),
-        age_group: firstNonEmpty(row, ["session_age_group", "day_age_group"], "") || null,
-        gender: firstNonEmpty(row, ["session_gender", "day_gender"], "") || null,
+        session_label: firstNonEmpty(
+          row,
+          ["session_label", "session", "session_name"],
+          "",
+        ),
+        age_group:
+          firstNonEmpty(row, ["session_age_group", "day_age_group"], "") ||
+          null,
+        gender:
+          firstNonEmpty(row, ["session_gender", "day_gender"], "") || null,
       });
     }
 
@@ -1969,7 +2214,11 @@ function parseMeetFileContent(content, options = {}) {
     }
 
     const explicitEventNumber = Number(
-      firstNonEmpty(row, ["event_number", "event_no", "eventnum", "evt_no"], ""),
+      firstNonEmpty(
+        row,
+        ["event_number", "event_no", "eventnum", "evt_no"],
+        "",
+      ),
     );
     const inferredEventNumber = extractEventNumberFromText(eventName);
     const eventNumber =
@@ -1990,8 +2239,14 @@ function parseMeetFileContent(content, options = {}) {
         ].find((candidate) => candidate.re.test(eventName));
         return matched ? matched.value : "";
       })();
-    const distanceRaw = firstNonEmpty(row, ["distance_meters", "distance", "meters"], "");
-    const distanceWithUnits = eventName.match(/\b(\d{2,4})\s*(?:m|meter|meters|yd|yard|yards)\b/i);
+    const distanceRaw = firstNonEmpty(
+      row,
+      ["distance_meters", "distance", "meters"],
+      "",
+    );
+    const distanceWithUnits = eventName.match(
+      /\b(\d{2,4})\s*(?:m|meter|meters|yd|yard|yards)\b/i,
+    );
     const distanceNoUnits = eventName.match(
       /\b(25|50|100|200|400|500|800|1000|1500)\b\s*(?=(?:freestyle|free|backstroke|back|breaststroke|breast|butterfly|fly|individual\s+medley|im|relay)\b)/i,
     );
@@ -2009,7 +2264,11 @@ function parseMeetFileContent(content, options = {}) {
       firstNonEmpty(row, ["gender", "sex"], "") ||
       extractGenderFromText(eventName) ||
       "";
-    const qualifyingRaw = firstNonEmpty(row, ["qualifying_time", "time_standard", "cut_time", "standard"], "");
+    const qualifyingRaw = firstNonEmpty(
+      row,
+      ["qualifying_time", "time_standard", "cut_time", "standard"],
+      "",
+    );
     const qualifyingSeconds = parseTimeToSeconds(qualifyingRaw);
     const selectedRaw = firstNonEmpty(row, ["is_selected", "selected"], "");
 
@@ -2020,19 +2279,28 @@ function parseMeetFileContent(content, options = {}) {
       age_group: ageGroup || null,
       gender: gender ? normalizeGender(gender) : null,
       qualifying_time_seconds: qualifyingSeconds,
-      qualifying_time_text: qualifyingSeconds != null ? formatSeconds(qualifyingSeconds) : null,
+      qualifying_time_text:
+        qualifyingSeconds != null ? formatSeconds(qualifyingSeconds) : null,
       is_selected: selectedRaw ? parseTruthy(selectedRaw) : index < 4,
     });
   });
 
   if (!events.length) {
-     const meetName = detectMeetNameFromText(text, options);
+    const meetName = detectMeetNameFromText(text, options);
     let detectedDate =
-      detectMeetDateFromText(text, options) || normalizeDateOnly(new Date().toISOString().slice(0, 10));
-    if (detectedDate && typeof detectedDate === "object" && detectedDate.start) {
+      detectMeetDateFromText(text, options) ||
+      normalizeDateOnly(new Date().toISOString().slice(0, 10));
+    if (
+      detectedDate &&
+      typeof detectedDate === "object" &&
+      detectedDate.start
+    ) {
       detectedDate = detectedDate.start;
     }
-    const inviteParsed = parseInviteSessionEventsFromText(text, { ...options, meet_date: detectedDate });
+    const inviteParsed = parseInviteSessionEventsFromText(text, {
+      ...options,
+      meet_date: detectedDate,
+    });
     if (!inviteParsed.events.length) {
       throw new Error("No valid events were found in the meet file");
     }
@@ -2083,7 +2351,11 @@ async function getSwimmerRowsByIds(swimmerIds) {
   return rows;
 }
 
-async function getMeetEligibilityForSwimmers(meetId, swimmerIds, meetDate = null) {
+async function getMeetEligibilityForSwimmers(
+  meetId,
+  swimmerIds,
+  meetDate = null,
+) {
   const eventRows = await (async () => {
     const [rows] = await pool.query(
       `SELECT id, event_name, stroke, distance_meters, age_group, gender,
@@ -2100,7 +2372,11 @@ async function getMeetEligibilityForSwimmers(meetId, swimmerIds, meetDate = null
 
   const eligibilityBySwimmerId = new Map();
 
-  if (!Array.isArray(swimmerIds) || swimmerIds.length === 0 || !selectedEvents.length) {
+  if (
+    !Array.isArray(swimmerIds) ||
+    swimmerIds.length === 0 ||
+    !selectedEvents.length
+  ) {
     return {
       selectedEvents,
       eligibilityBySwimmerId,
@@ -2115,8 +2391,10 @@ async function getMeetEligibilityForSwimmers(meetId, swimmerIds, meetDate = null
     const eligibleEventIds = [];
 
     selectedEvents.forEach((event) => {
-      const effectiveGender = event.gender || extractGenderFromText(event.event_name || "");
-      const effectiveAgeGroup = event.age_group || extractAgeGroupFromText(event.event_name || "");
+      const effectiveGender =
+        event.gender || extractGenderFromText(event.event_name || "");
+      const effectiveAgeGroup =
+        event.age_group || extractAgeGroupFromText(event.event_name || "");
 
       if (!genderMatches(effectiveGender, swimmer.gender)) {
         return;
@@ -2223,12 +2501,24 @@ app.post("/api/login", async (req, res) => {
 });
 
 app.post("/api/signup", async (req, res) => {
-  const { name, email, password, role, gender, date_of_birth, address } = req.body;
+  const { name, email, password, role, gender, date_of_birth, address } =
+    req.body;
 
-  if (!name || !email || !password || !role || !gender || !date_of_birth || !address) {
+  if (
+    !name ||
+    !email ||
+    !password ||
+    !role ||
+    !gender ||
+    !date_of_birth ||
+    !address
+  ) {
     return res
       .status(400)
-      .json({ message: "name, email, password, role, gender, date_of_birth, and address are required" });
+      .json({
+        message:
+          "name, email, password, role, gender, date_of_birth, and address are required",
+      });
   }
 
   if (!["swimmer", "parent"].includes(role)) {
@@ -2249,7 +2539,8 @@ app.post("/api/signup", async (req, res) => {
 
   if (!cleanName || !cleanEmail || !cleanGender || !cleanAddress || !cleanDob) {
     return res.status(400).json({
-      message: "name, email, gender, date_of_birth, and address must be valid and non-blank",
+      message:
+        "name, email, gender, date_of_birth, and address must be valid and non-blank",
     });
   }
 
@@ -2262,7 +2553,15 @@ app.post("/api/signup", async (req, res) => {
 
     const [result] = await connection.query(
       "INSERT INTO users (name, email, password_hash, role, gender, date_of_birth, address) VALUES (?, ?, ?, ?, ?, ?, ?)",
-      [cleanName, cleanEmail, passwordHash, role, cleanGender, cleanDob, cleanAddress],
+      [
+        cleanName,
+        cleanEmail,
+        passwordHash,
+        role,
+        cleanGender,
+        cleanDob,
+        cleanAddress,
+      ],
     );
 
     if (role === "swimmer") {
@@ -2363,12 +2662,24 @@ app.get("/api/users", authenticate, async (req, res) => {
 });
 
 app.post("/api/users", authenticate, requireRole("admin"), async (req, res) => {
-  const { name, email, password, role, gender, date_of_birth, address } = req.body;
+  const { name, email, password, role, gender, date_of_birth, address } =
+    req.body;
 
-  if (!name || !email || !password || !role || !gender || !date_of_birth || !address) {
+  if (
+    !name ||
+    !email ||
+    !password ||
+    !role ||
+    !gender ||
+    !date_of_birth ||
+    !address
+  ) {
     return res
       .status(400)
-      .json({ message: "name, email, password, role, gender, date_of_birth, and address are required" });
+      .json({
+        message:
+          "name, email, password, role, gender, date_of_birth, and address are required",
+      });
   }
 
   if (!["admin", "coach", "swimmer", "parent"].includes(role)) {
@@ -2389,7 +2700,8 @@ app.post("/api/users", authenticate, requireRole("admin"), async (req, res) => {
 
   if (!cleanName || !cleanEmail || !cleanGender || !cleanAddress || !cleanDob) {
     return res.status(400).json({
-      message: "name, email, gender, date_of_birth, and address must be valid and non-blank",
+      message:
+        "name, email, gender, date_of_birth, and address must be valid and non-blank",
     });
   }
 
@@ -2402,7 +2714,15 @@ app.post("/api/users", authenticate, requireRole("admin"), async (req, res) => {
 
     const [result] = await connection.query(
       "INSERT INTO users (name, email, password_hash, role, gender, date_of_birth, address) VALUES (?, ?, ?, ?, ?, ?, ?)",
-      [cleanName, cleanEmail, passwordHash, role, cleanGender, cleanDob, cleanAddress],
+      [
+        cleanName,
+        cleanEmail,
+        passwordHash,
+        role,
+        cleanGender,
+        cleanDob,
+        cleanAddress,
+      ],
     );
 
     if (role === "swimmer") {
@@ -3077,7 +3397,9 @@ app.put(
 
       let validFallbackSwimmerIds = new Set();
       if (useFallbackRoster) {
-        const [allSwimmerRows] = await connection.query("SELECT id FROM swimmers");
+        const [allSwimmerRows] = await connection.query(
+          "SELECT id FROM swimmers",
+        );
         validFallbackSwimmerIds = new Set(
           allSwimmerRows.map((row) => Number(row.id)),
         );
@@ -3088,7 +3410,8 @@ app.put(
       for (const entry of entries) {
         const swimmerId = Number(entry && entry.swimmer_id);
         const status = String(entry && entry.status ? entry.status : "").trim();
-        const note = entry && typeof entry.note === "string" ? entry.note.trim() : null;
+        const note =
+          entry && typeof entry.note === "string" ? entry.note.trim() : null;
 
         const swimmerAllowed = useFallbackRoster
           ? validFallbackSwimmerIds.has(swimmerId)
@@ -3459,29 +3782,27 @@ app.post(
         meet_name: parsedMeet.meet_name,
         meet_date: parsedMeet.meet_date,
         days_count: (parsedMeet.days || []).length,
-        days: (parsedMeet.days || []).map((d) => ({ 
-          meet_day: d.meet_day, 
+        days: (parsedMeet.days || []).map((d) => ({
+          meet_day: d.meet_day,
           session_label: d.session_label,
           age_group: d.age_group,
-          gender: d.gender
+          gender: d.gender,
         })),
         events_count: (parsedMeet.events || []).length,
         sample_events: (parsedMeet.events || []).slice(0, 3).map((e) => ({
           event_name: e.event_name,
           age_group: e.age_group,
-          gender: e.gender
-        }))
+          gender: e.gender,
+        })),
       });
     } catch (error) {
       const contentLength = String(content || "").trim().length;
-      return res
-        .status(400)
-        .json({
-          message: `Invalid meet file: ${error.message}`,
-          details: {
-            extracted_text_length: contentLength,
-          },
-        });
+      return res.status(400).json({
+        message: `Invalid meet file: ${error.message}`,
+        details: {
+          extracted_text_length: contentLength,
+        },
+      });
     }
 
     const connection = await pool.getConnection();
@@ -3493,21 +3814,39 @@ app.post(
 
       // Calculate date range from all meet days
       const meetDays = (parsedMeet.days || [])
-        .map(d => normalizeDateOnly(d && d.meet_day))
+        .map((d) => normalizeDateOnly(d && d.meet_day))
         .filter(Boolean)
         .sort();
-      const startDate = meetDays.length > 0 ? meetDays[0] : normalizeDateOnly(parsedMeet.meet_date);
-      const endDate = meetDays.length > 0 ? meetDays[meetDays.length - 1] : normalizeDateOnly(parsedMeet.meet_date);
+      const startDate =
+        meetDays.length > 0
+          ? meetDays[0]
+          : normalizeDateOnly(parsedMeet.meet_date);
+      const endDate =
+        meetDays.length > 0
+          ? meetDays[meetDays.length - 1]
+          : normalizeDateOnly(parsedMeet.meet_date);
 
-      console.log("🔍 IMPORT DEBUG - parsedMeet.days:", parsedMeet.days.length, "days");
-      console.log("🔍 IMPORT DEBUG - parsedMeet.days details:", parsedMeet.days.map(d => ({
-        meet_day: d.meet_day,
-        session_label: d.session_label,
-        age_group: d.age_group,
-        gender: d.gender
-      })));
+      console.log(
+        "🔍 IMPORT DEBUG - parsedMeet.days:",
+        parsedMeet.days.length,
+        "days",
+      );
+      console.log(
+        "🔍 IMPORT DEBUG - parsedMeet.days details:",
+        parsedMeet.days.map((d) => ({
+          meet_day: d.meet_day,
+          session_label: d.session_label,
+          age_group: d.age_group,
+          gender: d.gender,
+        })),
+      );
       console.log("🔍 IMPORT DEBUG - meetDays (unique dates):", meetDays);
-      console.log("🔍 IMPORT DEBUG - startDate:", startDate, "endDate:", endDate);
+      console.log(
+        "🔍 IMPORT DEBUG - startDate:",
+        startDate,
+        "endDate:",
+        endDate,
+      );
 
       const [meetResult] = await connection.query(
         `INSERT INTO meets (meet_name, meet_date, location, host_team, import_filename, start_date, end_date, created_by_coach_id)
@@ -3517,7 +3856,9 @@ app.post(
           parsedMeet.meet_date,
           parsedMeet.location,
           parsedMeet.host_team,
-          payload && payload.file_name ? String(payload.file_name).slice(0, 255) : null,
+          payload && payload.file_name
+            ? String(payload.file_name).slice(0, 255)
+            : null,
           startDate,
           endDate,
           coachId,
@@ -3544,23 +3885,31 @@ app.post(
         }
         const finalImportDays = deduplicatedDays;
 
-        console.log("🔍 normalizedImportDays to be inserted:", finalImportDays.map(d => ({
-          meet_day: d.meet_day,
-          session_label: d.session_label,
-          warmup_time: d.warmup_time
-        })));
+        console.log(
+          "🔍 normalizedImportDays to be inserted:",
+          finalImportDays.map((d) => ({
+            meet_day: d.meet_day,
+            session_label: d.session_label,
+            warmup_time: d.warmup_time,
+          })),
+        );
 
         if (!finalImportDays.length) {
-          throw new Error("No valid meet days could be derived from the imported file");
+          throw new Error(
+            "No valid meet days could be derived from the imported file",
+          );
         }
 
         const [warmupColumnRows] = await connection.query(
           "SHOW COLUMNS FROM meet_days LIKE 'warmup_time'",
         );
-        const hasWarmupTimeColumn = Array.isArray(warmupColumnRows) && warmupColumnRows.length > 0;
+        const hasWarmupTimeColumn =
+          Array.isArray(warmupColumnRows) && warmupColumnRows.length > 0;
 
         if (hasWarmupTimeColumn) {
-          const dayValuesWithSession = finalImportDays.map(() => "(?, ?, ?, ?, ?, ?)").join(", ");
+          const dayValuesWithSession = finalImportDays
+            .map(() => "(?, ?, ?, ?, ?, ?)")
+            .join(", ");
           const dayParams = finalImportDays.flatMap((day) => [
             meetId,
             normalizeDateOnly(day.meet_day),
@@ -3575,7 +3924,9 @@ app.post(
             dayParams,
           );
         } else {
-          const dayValuesWithSession = finalImportDays.map(() => "(?, ?, ?, ?, ?)").join(", ");
+          const dayValuesWithSession = finalImportDays
+            .map(() => "(?, ?, ?, ?, ?)")
+            .join(", ");
           const dayParams = finalImportDays.flatMap((day) => [
             meetId,
             normalizeDateOnly(day.meet_day),
@@ -3619,7 +3970,12 @@ app.post(
       await connection.commit();
 
       // Save the original file if it's a PDF
-      if (payload && payload.file_buffer && payload.is_pdf && payload.file_name) {
+      if (
+        payload &&
+        payload.file_buffer &&
+        payload.is_pdf &&
+        payload.file_name
+      ) {
         try {
           const fileExtension = path.extname(payload.file_name) || ".pdf";
           const safeFileName = `${meetId}${fileExtension}`;
@@ -3627,7 +3983,10 @@ app.post(
           fs.writeFileSync(filePath, payload.file_buffer);
           console.log(`✓ Saved PDF for meet ${meetId}:`, filePath);
         } catch (error) {
-          console.warn(`Warning: Could not save PDF file for meet ${meetId}:`, error.message);
+          console.warn(
+            `Warning: Could not save PDF file for meet ${meetId}:`,
+            error.message,
+          );
         }
       }
 
@@ -3643,10 +4002,15 @@ app.post(
       });
     } catch (error) {
       await connection.rollback();
-      const errorText = String(error && error.message ? error.message : "Unknown import error").trim();
+      const errorText = String(
+        error && error.message ? error.message : "Unknown import error",
+      ).trim();
       return res
         .status(500)
-        .json({ message: `Failed to import meet: ${errorText}`, error: errorText });
+        .json({
+          message: `Failed to import meet: ${errorText}`,
+          error: errorText,
+        });
     } finally {
       connection.release();
     }
@@ -3658,13 +4022,21 @@ app.post(
   authenticate,
   requireRole("admin", "coach"),
   async (req, res) => {
-    const meetName = String(req.body && req.body.meet_name ? req.body.meet_name : "").trim();
+    const meetName = String(
+      req.body && req.body.meet_name ? req.body.meet_name : "",
+    ).trim();
     const meetDate = normalizeDateOnly(req.body && req.body.meet_date);
-    const location = String(req.body && req.body.location ? req.body.location : "").trim();
-    const hostTeam = String(req.body && req.body.host_team ? req.body.host_team : "").trim();
+    const location = String(
+      req.body && req.body.location ? req.body.location : "",
+    ).trim();
+    const hostTeam = String(
+      req.body && req.body.host_team ? req.body.host_team : "",
+    ).trim();
 
     if (!meetName || !meetDate) {
-      return res.status(400).json({ message: "meet_name and meet_date are required" });
+      return res
+        .status(400)
+        .json({ message: "meet_name and meet_date are required" });
     }
 
     try {
@@ -3713,7 +4085,9 @@ app.delete(
     }
 
     try {
-      const [result] = await pool.query("DELETE FROM meets WHERE id = ?", [meetId]);
+      const [result] = await pool.query("DELETE FROM meets WHERE id = ?", [
+        meetId,
+      ]);
       if (result.affectedRows === 0) {
         return res.status(404).json({ message: "Meet not found" });
       }
@@ -3738,7 +4112,9 @@ app.post(
     }
 
     try {
-      const [result] = await pool.query("DELETE FROM meets WHERE id = ?", [meetId]);
+      const [result] = await pool.query("DELETE FROM meets WHERE id = ?", [
+        meetId,
+      ]);
       if (result.affectedRows === 0) {
         return res.status(404).json({ message: "Meet not found" });
       }
@@ -3762,18 +4138,28 @@ app.put(
       return res.status(400).json({ message: "Invalid meet id" });
     }
 
-    const meetName = String(req.body && req.body.meet_name ? req.body.meet_name : "").trim();
+    const meetName = String(
+      req.body && req.body.meet_name ? req.body.meet_name : "",
+    ).trim();
     const startDate = normalizeDateOnly(req.body && req.body.start_date);
     const endDate = normalizeDateOnly(req.body && req.body.end_date);
-    const location = String(req.body && req.body.location ? req.body.location : "").trim();
-    const hostTeam = String(req.body && req.body.host_team ? req.body.host_team : "").trim();
+    const location = String(
+      req.body && req.body.location ? req.body.location : "",
+    ).trim();
+    const hostTeam = String(
+      req.body && req.body.host_team ? req.body.host_team : "",
+    ).trim();
 
     if (!meetName || !startDate || !endDate) {
-      return res.status(400).json({ message: "meet_name, start_date, and end_date are required" });
+      return res
+        .status(400)
+        .json({ message: "meet_name, start_date, and end_date are required" });
     }
 
     if (startDate > endDate) {
-      return res.status(400).json({ message: "start_date must be before or equal to end_date" });
+      return res
+        .status(400)
+        .json({ message: "start_date must be before or equal to end_date" });
     }
 
     try {
@@ -3781,7 +4167,7 @@ app.put(
       const allDates = [];
       const current = new Date(startDate + "T00:00:00Z");
       const end = new Date(endDate + "T00:00:00Z");
-      
+
       while (current <= end) {
         const dateStr = current.toISOString().split("T")[0];
         allDates.push(dateStr);
@@ -3805,11 +4191,17 @@ app.put(
 
       // Delete existing meet_days and recreate from date range
       await pool.query("DELETE FROM meet_days WHERE meet_id = ?", [meetId]);
-      
+
       if (allDates.length > 0) {
         const dayValues = allDates.map(() => "(?, ?, ?, ?, ?)").join(", ");
-        const dayParams = allDates.flatMap((date) => [meetId, date, "", null, null]);
-        
+        const dayParams = allDates.flatMap((date) => [
+          meetId,
+          date,
+          "",
+          null,
+          null,
+        ]);
+
         await pool.query(
           `INSERT INTO meet_days (meet_id, meet_day, session_label, age_group, gender)
            VALUES ${dayValues}
@@ -3924,7 +4316,7 @@ app.get("/api/meets/:id", authenticate, async (req, res) => {
     // session-level meet_days from event_name session prefixes like "[Friday PM] ..."
     let returnedDays = Array.isArray(days) ? days : [];
     try {
-      if ((returnedDays.length <= 1) && Array.isArray(events) && events.length) {
+      if (returnedDays.length <= 1 && Array.isArray(events) && events.length) {
         const sessionLabels = new Map();
         events.forEach((ev) => {
           const m = String(ev.event_name || "").match(/^\[([^\]]+)\]/);
@@ -3932,7 +4324,10 @@ app.get("/api/meets/:id", authenticate, async (req, res) => {
         });
 
         if (sessionLabels.size > 0) {
-          const baseDate = meetRows[0] && (meetRows[0].start_date || meetRows[0].meet_date) ? (meetRows[0].start_date || meetRows[0].meet_date) : null;
+          const baseDate =
+            meetRows[0] && (meetRows[0].start_date || meetRows[0].meet_date)
+              ? meetRows[0].start_date || meetRows[0].meet_date
+              : null;
           const reconstructed = [];
           for (const label of sessionLabels.keys()) {
             // Expect labels like "Friday PM" or "Saturday MID"
@@ -3941,33 +4336,59 @@ app.get("/api/meets/:id", authenticate, async (req, res) => {
             const periodRaw = parts.length > 1 ? parts.slice(1).join(" ") : "";
             if (!dayName) continue;
             const normalizedPeriod = normalizeInviteSessionPeriod(periodRaw);
-            const meet_day = baseDate ? addDaysToDateOnly(baseDate, getDayOffsetFromDate(baseDate, dayName)) : null;
+            const meet_day = baseDate
+              ? addDaysToDateOnly(
+                  baseDate,
+                  getDayOffsetFromDate(baseDate, dayName),
+                )
+              : null;
             if (!meet_day) continue;
-            reconstructed.push({ meet_day, session_label: `${dayName} ${normalizedPeriod}`.trim(), age_group: null, gender: null });
+            reconstructed.push({
+              meet_day,
+              session_label: `${dayName} ${normalizedPeriod}`.trim(),
+              age_group: null,
+              gender: null,
+            });
           }
           if (reconstructed.length) {
-            returnedDays = normalizeMeetDayEntries(reconstructed, meetRows[0] && (meetRows[0].start_date || meetRows[0].meet_date));
-            console.log("🔍 Reconstructed meet_days from events:", returnedDays.map(d => ({ meet_day: d.meet_day, session_label: d.session_label })));
+            returnedDays = normalizeMeetDayEntries(
+              reconstructed,
+              meetRows[0] && (meetRows[0].start_date || meetRows[0].meet_date),
+            );
+            console.log(
+              "🔍 Reconstructed meet_days from events:",
+              returnedDays.map((d) => ({
+                meet_day: d.meet_day,
+                session_label: d.session_label,
+              })),
+            );
           }
         }
       }
     } catch (reconErr) {
-      console.log("⚠️ Failed to reconstruct meet_days from events:", reconErr && reconErr.message ? reconErr.message : reconErr);
+      console.log(
+        "⚠️ Failed to reconstruct meet_days from events:",
+        reconErr && reconErr.message ? reconErr.message : reconErr,
+      );
     }
 
     let swimmerIds = [];
     if (req.user.role === "admin" || req.user.role === "coach") {
-      const [swimmerRows] = await pool.query("SELECT id FROM swimmers ORDER BY id ASC");
+      const [swimmerRows] = await pool.query(
+        "SELECT id FROM swimmers ORDER BY id ASC",
+      );
       swimmerIds = swimmerRows.map((row) => Number(row.id));
     } else {
       swimmerIds = await getAccessibleSwimmerIdsForUser(req.user);
     }
 
-    const accessibleSwimmerIds = [...new Set(
-      swimmerIds
-        .map((id) => Number(id))
-        .filter((id) => Number.isInteger(id) && id > 0),
-    )];
+    const accessibleSwimmerIds = [
+      ...new Set(
+        swimmerIds
+          .map((id) => Number(id))
+          .filter((id) => Number.isInteger(id) && id > 0),
+      ),
+    ];
 
     const eligibility = await getMeetEligibilityForSwimmers(
       meetId,
@@ -3986,6 +4407,26 @@ app.get("/api/meets/:id", authenticate, async (req, res) => {
     const declarationSwimmerIds = accessibleSwimmerIds;
 
     const swimmerRows = await getSwimmerRowsByIds(declarationSwimmerIds);
+
+    // Fetch best times for declaration swimmers so UI can show entry times
+    let bestTimesRows = [];
+    if (declarationSwimmerIds && declarationSwimmerIds.length) {
+      try {
+        const [btRows] = await pool.query(
+          `SELECT sbt.swimmer_id, sbt.stroke, sbt.distance_meters, sbt.course, sbt.best_time_seconds, sbt.best_time_text
+           FROM swimmer_best_times sbt
+           WHERE sbt.swimmer_id IN (${declarationSwimmerIds.map(() => "?").join(",")})`,
+          declarationSwimmerIds,
+        );
+        bestTimesRows = btRows;
+      } catch (btErr) {
+        console.warn(
+          "Failed to fetch swimmer best times:",
+          btErr && btErr.message ? btErr.message : btErr,
+        );
+        bestTimesRows = [];
+      }
+    }
 
     let declarations = [];
     if (declarationSwimmerIds.length > 0) {
@@ -4021,8 +4462,10 @@ app.get("/api/meets/:id", authenticate, async (req, res) => {
     }
 
     const declarationEligibility = [];
-    const swimmerById = new Map(swimmerRows.map((row) => [Number(row.swimmer_id), row]));
-    
+    const swimmerById = new Map(
+      swimmerRows.map((row) => [Number(row.swimmer_id), row]),
+    );
+
     // Group events by session for easier lookup
     const eventsBySession = new Map();
     events.forEach((event) => {
@@ -4032,35 +4475,41 @@ app.get("/api/meets/:id", authenticate, async (req, res) => {
       if (parsed) {
         sessionLabel = parsed[1];
       }
-      
+
       const key = `${sessionLabel}`;
       if (!eventsBySession.has(key)) {
         eventsBySession.set(key, []);
       }
       eventsBySession.get(key).push(event);
     });
-    
-    console.log("🔍 Events by session:", Array.from(eventsBySession.entries()).map(([label, evts]) => ({
-      session_label: label,
-      event_count: evts.length
-    })));
-    
+
+    console.log(
+      "🔍 Events by session:",
+      Array.from(eventsBySession.entries()).map(([label, evts]) => ({
+        session_label: label,
+        event_count: evts.length,
+      })),
+    );
+
     for (const swimmerId of declarationSwimmerIds) {
       const swimmer = swimmerById.get(Number(swimmerId));
       if (!swimmer) continue;
-      
+
       for (const day of days) {
         // Check if swimmer is eligible for this session by checking events in the session
         const sessionKey = String(day.session_label || "").trim();
         const sessionEvents = eventsBySession.get(sessionKey) || [];
-        
+
         let allowed = false;
         if (sessionEvents.length > 0) {
           // Check if any event in this session is eligible for the swimmer
           allowed = sessionEvents.some((event) => {
-            const effectiveGender = event.gender || extractGenderFromText(event.event_name || "");
-            const effectiveAgeGroup = event.age_group || extractAgeGroupFromText(event.event_name || "");
-            
+            const effectiveGender =
+              event.gender || extractGenderFromText(event.event_name || "");
+            const effectiveAgeGroup =
+              event.age_group ||
+              extractAgeGroupFromText(event.event_name || "");
+
             return (
               genderMatches(effectiveGender, swimmer.gender) &&
               ageMatches(effectiveAgeGroup, swimmer.date_of_birth, day.meet_day)
@@ -4075,7 +4524,7 @@ app.get("/api/meets/:id", authenticate, async (req, res) => {
           // No events and no session constraints = open to everyone
           allowed = true;
         }
-        
+
         declarationEligibility.push({
           swimmer_id: Number(swimmerId),
           meet_day: day.meet_day,
@@ -4090,6 +4539,7 @@ app.get("/api/meets/:id", authenticate, async (req, res) => {
       days: returnedDays,
       events,
       swimmers: swimmerRows,
+      best_times: bestTimesRows,
       eligibility: Array.from(eligibility.eligibilityBySwimmerId.values()),
       declaration_eligibility: declarationEligibility,
       declarations,
@@ -4100,7 +4550,8 @@ app.get("/api/meets/:id", authenticate, async (req, res) => {
         req.user.role === "parent" ||
         req.user.role === "coach" ||
         req.user.role === "admin",
-      can_manage_entries: req.user.role === "admin" || req.user.role === "coach",
+      can_manage_entries:
+        req.user.role === "admin" || req.user.role === "coach",
     });
   } catch (error) {
     return res
@@ -4115,7 +4566,9 @@ app.put(
   requireRole("admin", "coach"),
   async (req, res) => {
     const meetId = Number(req.params.id);
-    const eventIdsInput = Array.isArray(req.body.event_ids) ? req.body.event_ids : [];
+    const eventIdsInput = Array.isArray(req.body.event_ids)
+      ? req.body.event_ids
+      : [];
     const eventIds = [
       ...new Set(
         eventIdsInput
@@ -4150,9 +4603,10 @@ app.put(
 
       await connection.beginTransaction();
 
-      await connection.query("UPDATE meet_events SET is_selected = 0 WHERE meet_id = ?", [
-        meetId,
-      ]);
+      await connection.query(
+        "UPDATE meet_events SET is_selected = 0 WHERE meet_id = ?",
+        [meetId],
+      );
 
       if (eventIds.length) {
         await connection.query(
@@ -4203,13 +4657,20 @@ app.put(
     try {
       let accessibleSwimmerIds = [];
       if (req.user.role === "coach" || req.user.role === "admin") {
-        const [swimmerRows] = await pool.query("SELECT id FROM swimmers ORDER BY id ASC");
+        const [swimmerRows] = await pool.query(
+          "SELECT id FROM swimmers ORDER BY id ASC",
+        );
         accessibleSwimmerIds = swimmerRows.map((row) => Number(row.id));
       } else {
         accessibleSwimmerIds = await getAccessibleSwimmerIdsForUser(req.user);
       }
-      if (!Array.isArray(accessibleSwimmerIds) || accessibleSwimmerIds.length === 0) {
-        return res.status(403).json({ message: "No swimmers available for declarations" });
+      if (
+        !Array.isArray(accessibleSwimmerIds) ||
+        accessibleSwimmerIds.length === 0
+      ) {
+        return res
+          .status(403)
+          .json({ message: "No swimmers available for declarations" });
       }
 
       const [meetDayRows] = await pool.query(
@@ -4224,7 +4685,9 @@ app.put(
       );
 
       if (!meetDayMap.size) {
-        return res.status(400).json({ message: "No meet days configured for this meet" });
+        return res
+          .status(400)
+          .json({ message: "No meet days configured for this meet" });
       }
 
       const eligibility = await getMeetEligibilityForSwimmers(
@@ -4234,11 +4697,15 @@ app.put(
       );
 
       if (!eligibility.visibleSwimmerIds.length) {
-        return res.status(403).json({ message: "No qualified swimmers for this meet" });
+        return res
+          .status(403)
+          .json({ message: "No qualified swimmers for this meet" });
       }
 
       const swimmerRows = await getSwimmerRowsByIds(accessibleSwimmerIds);
-      const swimmerById = new Map(swimmerRows.map((row) => [Number(row.swimmer_id), row]));
+      const swimmerById = new Map(
+        swimmerRows.map((row) => [Number(row.swimmer_id), row]),
+      );
 
       const connection = await pool.getConnection();
       try {
@@ -4287,7 +4754,9 @@ app.put(
             });
           }
 
-          const status = String(entry.status || "").trim().toLowerCase();
+          const status = String(entry.status || "")
+            .trim()
+            .toLowerCase();
           if (!validStatuses.has(status)) {
             await connection.rollback();
             return res
@@ -4300,7 +4769,9 @@ app.put(
 
           const swimmer = swimmerById.get(swimmerId);
           for (const sessionRow of sessionRowsForEntry) {
-            const resolvedSessionLabel = normalizeSessionLabel(sessionRow.session_label || "");
+            const resolvedSessionLabel = normalizeSessionLabel(
+              sessionRow.session_label || "",
+            );
             const allowedForSession =
               swimmer &&
               genderMatches(sessionRow.gender, swimmer.gender) &&
@@ -4366,7 +4837,9 @@ app.put(
     }
 
     try {
-      const [swimmerRows] = await pool.query("SELECT id FROM swimmers ORDER BY id ASC");
+      const [swimmerRows] = await pool.query(
+        "SELECT id FROM swimmers ORDER BY id ASC",
+      );
       const swimmerIds = swimmerRows.map((row) => Number(row.id));
 
       const [meetRows] = await pool.query(
@@ -4389,7 +4862,9 @@ app.put(
          WHERE meet_id = ? AND status = 'yes'`,
         [meetId],
       );
-      const declaredYesSet = new Set(declaredRows.map((row) => Number(row.swimmer_id)));
+      const declaredYesSet = new Set(
+        declaredRows.map((row) => Number(row.swimmer_id)),
+      );
 
       const eligibility = await getMeetEligibilityForSwimmers(
         meetId,
@@ -4410,7 +4885,13 @@ app.put(
         for (const entry of entries) {
           const swimmerId = Number(entry && entry.swimmer_id);
           const eventIds = Array.isArray(entry && entry.event_ids)
-            ? [...new Set(entry.event_ids.map((id) => Number(id)).filter((id) => Number.isInteger(id) && id > 0))]
+            ? [
+                ...new Set(
+                  entry.event_ids
+                    .map((id) => Number(id))
+                    .filter((id) => Number.isInteger(id) && id > 0),
+                ),
+              ]
             : [];
 
           if (!Number.isInteger(swimmerId) || !declaredYesSet.has(swimmerId)) {
@@ -4531,7 +5012,9 @@ app.post(
       return res.status(400).json({ message: "stroke is required" });
     }
     if (!Number.isInteger(distanceMeters) || distanceMeters <= 0) {
-      return res.status(400).json({ message: "Valid distance_meters is required" });
+      return res
+        .status(400)
+        .json({ message: "Valid distance_meters is required" });
     }
     if (bestTimeSeconds == null) {
       return res.status(400).json({
@@ -4602,21 +5085,33 @@ app.post(
       const text = content.trim();
       if (text.startsWith("[") || text.startsWith("{")) {
         const parsed = JSON.parse(text);
-        rows = Array.isArray(parsed) ? parsed : Array.isArray(parsed.rows) ? parsed.rows : [];
+        rows = Array.isArray(parsed)
+          ? parsed
+          : Array.isArray(parsed.rows)
+            ? parsed.rows
+            : [];
       } else {
         rows = parseCsvToObjects(text);
       }
     } catch (error) {
-      return res.status(400).json({ message: `Invalid file: ${error.message}` });
+      return res
+        .status(400)
+        .json({ message: `Invalid file: ${error.message}` });
     }
 
     if (!Array.isArray(rows) || !rows.length) {
       return res.status(400).json({ message: "No time rows found" });
     }
 
-    const importFileName = String(payload && payload.file_name ? payload.file_name : req.headers["x-file-name"] || "");
+    const importFileName = String(
+      payload && payload.file_name
+        ? payload.file_name
+        : req.headers["x-file-name"] || "",
+    );
     const requestedDefaultSwimmerId = Number(
-      payload && payload.default_swimmer_id ? payload.default_swimmer_id : req.headers["x-default-swimmer-id"] || 0,
+      payload && payload.default_swimmer_id
+        ? payload.default_swimmer_id
+        : req.headers["x-default-swimmer-id"] || 0,
     );
     const connection = await pool.getConnection();
     let imported = 0;
@@ -4652,7 +5147,11 @@ app.post(
         const row = rows[i];
         const swimmerIdRaw = firstNonEmpty(row, ["swimmer_id"], "");
         const swimmerEmail = firstNonEmpty(row, ["swimmer_email", "email"], "");
-        const swimmerName = firstNonEmpty(row, ["swimmer_name", "swimmer", "name", "athlete"], "");
+        const swimmerName = firstNonEmpty(
+          row,
+          ["swimmer_name", "swimmer", "name", "athlete"],
+          "",
+        );
         let swimmerId = swimmerIdRaw ? Number(swimmerIdRaw) : null;
 
         if (!swimmerId && swimmerEmail) {
@@ -4709,8 +5208,16 @@ app.post(
           ),
         );
 
-        if (!swimmerId || !stroke || !distanceMeters || bestTimeSeconds == null) {
-          skipped.push({ row: i + 1, reason: "Missing swimmer/stroke/distance/time" });
+        if (
+          !swimmerId ||
+          !stroke ||
+          !distanceMeters ||
+          bestTimeSeconds == null
+        ) {
+          skipped.push({
+            row: i + 1,
+            reason: "Missing swimmer/stroke/distance/time",
+          });
           continue;
         }
 

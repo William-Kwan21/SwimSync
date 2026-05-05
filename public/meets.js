@@ -43,7 +43,9 @@ const meetDetailTitle = document.getElementById("meet-detail-title");
 const meetDetailMeta = document.getElementById("meet-detail-meta");
 const meetOverview = document.getElementById("meet-overview");
 const meetDays = document.getElementById("meet-days");
-const meetPublicEventsTbody = document.getElementById("meet-public-events-tbody");
+const meetPublicEventsTbody = document.getElementById(
+  "meet-public-events-tbody",
+);
 const meetEditControls = document.getElementById("meet-edit-controls");
 const meetEditForm = document.getElementById("meet-edit-form");
 const meetEditName = document.getElementById("meet-edit-name");
@@ -57,7 +59,9 @@ const btnSaveMeetEdit = document.getElementById("btn-save-meet-edit");
 const coachEventControls = document.getElementById("coach-event-controls");
 const eventsTbody = document.getElementById("events-tbody");
 const coachSelectionStatus = document.getElementById("coach-selection-status");
-const btnSaveEventSelection = document.getElementById("btn-save-event-selection");
+const btnSaveEventSelection = document.getElementById(
+  "btn-save-event-selection",
+);
 
 const declareControls = document.getElementById("declare-controls");
 const declareTbody = document.getElementById("declare-tbody");
@@ -148,7 +152,11 @@ async function readResponseMessage(res) {
 
   try {
     const data = JSON.parse(text);
-    return String(data && (data.message || data.error || data.details) ? data.message || data.error || data.details : "").trim();
+    return String(
+      data && (data.message || data.error || data.details)
+        ? data.message || data.error || data.details
+        : "",
+    ).trim();
   } catch {
     return text.replace(/\s+/g, " ").trim().slice(0, 240);
   }
@@ -184,7 +192,8 @@ function applyRoleUI() {
   userRoleBadge.textContent = currentUser.role.toUpperCase();
   userRoleBadge.className = `badge role-badge role-${currentUser.role}`;
 
-  const canManageMeets = currentUser.role === "admin" || currentUser.role === "coach";
+  const canManageMeets =
+    currentUser.role === "admin" || currentUser.role === "coach";
   const canImport = currentUser.role === "admin";
 
   if (canManageMeets) {
@@ -233,7 +242,11 @@ if (meetCreateForm) {
       }
 
       meetCreateForm.reset();
-      showState(meetCreateStatus, `Meet created: ${data.meet.meet_name}`, "info");
+      showState(
+        meetCreateStatus,
+        `Meet created: ${data.meet.meet_name}`,
+        "info",
+      );
       await loadMeets();
     } catch (error) {
       showState(meetCreateStatus, `Create failed: ${error.message}`, "error");
@@ -309,7 +322,9 @@ function renderMeetDays(days) {
     .map((row) => {
       const sessionLabel = String(row.session_label || "").trim();
       const dateLabel = formatDate(row.meet_day);
-      const chipLabel = sessionLabel ? `${sessionLabel} • ${dateLabel}` : dateLabel;
+      const chipLabel = sessionLabel
+        ? `${sessionLabel} • ${dateLabel}`
+        : dateLabel;
       return `<span class="chip">${escHtml(chipLabel)}</span>`;
     })
     .join("");
@@ -328,9 +343,10 @@ function renderImportantInfo(detail) {
   if (meet.start_date || meet.end_date) {
     const startDateStr = meet.start_date ? formatDate(meet.start_date) : "TBD";
     const endDateStr = meet.end_date ? formatDate(meet.end_date) : "TBD";
-    const dateRangeText = meet.start_date && meet.end_date && meet.start_date !== meet.end_date
-      ? `${startDateStr} to ${endDateStr}`
-      : startDateStr;
+    const dateRangeText =
+      meet.start_date && meet.end_date && meet.start_date !== meet.end_date
+        ? `${startDateStr} to ${endDateStr}`
+        : startDateStr;
 
     dateRangeHtml = `
       <div style="padding: 0.75rem; border: 1px solid #dee2e6; border-radius: 4px;">
@@ -391,7 +407,9 @@ function renderImportantInfo(detail) {
     `;
   }
 
-  const contentHtml = [dateRangeHtml, locationHtml, warmupHtml, fileHtml].filter(Boolean).join("");
+  const contentHtml = [dateRangeHtml, locationHtml, warmupHtml, fileHtml]
+    .filter(Boolean)
+    .join("");
 
   if (contentHtml) {
     importantInfoContent.innerHTML = contentHtml;
@@ -405,8 +423,12 @@ function renderMeetOverview(detail) {
   if (!meetOverview) return;
 
   const meet = detail && detail.meet ? detail.meet : {};
-  const dayCount = Array.isArray(detail && detail.days) ? detail.days.length : 0;
-  const eventCount = Array.isArray(detail && detail.events) ? detail.events.length : 0;
+  const dayCount = Array.isArray(detail && detail.days)
+    ? detail.days.length
+    : 0;
+  const eventCount = Array.isArray(detail && detail.events)
+    ? detail.events.length
+    : 0;
 
   // Calculate date range from all meet days
   let dateRangeDisplay = formatDate(meet.meet_date);
@@ -415,18 +437,25 @@ function renderMeetOverview(detail) {
       .map((day) => String(day.meet_day || "").slice(0, 10))
       .filter(Boolean)
       .sort();
-    
+
     if (dates.length > 1) {
       const firstDate = new Date(dates[0] + "T00:00:00");
       const lastDate = new Date(dates[dates.length - 1] + "T00:00:00");
-      
-      if (!Number.isNaN(firstDate.getTime()) && !Number.isNaN(lastDate.getTime())) {
-        const firstMonth = firstDate.toLocaleDateString("en-US", { month: "short" });
+
+      if (
+        !Number.isNaN(firstDate.getTime()) &&
+        !Number.isNaN(lastDate.getTime())
+      ) {
+        const firstMonth = firstDate.toLocaleDateString("en-US", {
+          month: "short",
+        });
         const firstDay = firstDate.getDate();
-        const lastMonth = lastDate.toLocaleDateString("en-US", { month: "short" });
+        const lastMonth = lastDate.toLocaleDateString("en-US", {
+          month: "short",
+        });
         const lastDay = lastDate.getDate();
         const year = firstDate.getFullYear();
-        
+
         // Format as "May 1-3, 2026" or "May 1 - Jun 3, 2026" if different months
         if (firstMonth === lastMonth) {
           dateRangeDisplay = `${firstMonth} ${firstDay}-${lastDay}, ${year}`;
@@ -480,22 +509,25 @@ function parseEventNameWithSession(eventName) {
 
 function extractAgeGroupFromEventName(eventName) {
   if (!eventName) return "";
-  
+
   // Format: "Gender AgeGroup Distance Stroke"
   // Example: "Female 11-12 50m Freestyle"
   const parts = String(eventName).trim().split(/\s+/);
-  
+
   // If we have at least 2 parts (gender + age group)
   if (parts.length >= 2) {
     // The second part should be the age group
     const ageGroup = parts[1];
-    
+
     // Check if it looks like an age group (contains digits or "Open" or "&")
-    if (ageGroup && (ageGroup.match(/\d/) || ageGroup === "Open" || ageGroup.includes("&"))) {
+    if (
+      ageGroup &&
+      (ageGroup.match(/\d/) || ageGroup === "Open" || ageGroup.includes("&"))
+    ) {
       return ageGroup;
     }
   }
-  
+
   return "";
 }
 
@@ -524,22 +556,30 @@ function renderPublicEventsTable(detail) {
       lastSessionLabel = sessionLabel;
     }
 
-    const eventNumberMatch = String(eventTitle || "").match(/\bEvent\s+(\d{1,3})\b/i);
-    const eventNumber = eventNumberMatch ? eventNumberMatch[1] : String(index + 1);
+    const eventNumberMatch = String(eventTitle || "").match(
+      /\bEvent\s+(\d{1,3})\b/i,
+    );
+    const eventNumber = eventNumberMatch
+      ? eventNumberMatch[1]
+      : String(index + 1);
     const cleanEventName = String(eventTitle || "-")
       .replace(/\bEvent\s+\d{1,3}\b\s*/i, "")
       .trim();
     const displayEventName = cleanEventName;
-    
+
     const standardText = event.qualifying_time_text || "NT";
     const entryState = "OPEN";
     const entryClass = "event-entry-in";
-    
+
     // Use database age_group, or extract from cleaned event_name as fallback
-    const ageGroup = event.age_group || extractAgeGroupFromEventName(cleanEventName);
+    const ageGroup =
+      event.age_group || extractAgeGroupFromEventName(cleanEventName);
     const tagBits = [ageGroup || ""].filter(Boolean);
-    
-    const metaBits = [event.distance_meters ? `${event.distance_meters}m` : "", event.stroke || ""]
+
+    const metaBits = [
+      event.distance_meters ? `${event.distance_meters}m` : "",
+      event.stroke || "",
+    ]
       .filter(Boolean)
       .join(" ");
 
@@ -557,9 +597,16 @@ function renderPublicEventsTable(detail) {
               </td>
               <td><span class="event-time-text">${escHtml(standardText)}</span></td>
               <td>
-                ${tagBits.length
-                  ? tagBits.map((tag) => `<span class="event-standard-chip">${escHtml(tag)}</span>`).join("")
-                  : '<span class="event-standard-muted">Open</span>'}
+                ${
+                  tagBits.length
+                    ? tagBits
+                        .map(
+                          (tag) =>
+                            `<span class="event-standard-chip">${escHtml(tag)}</span>`,
+                        )
+                        .join("")
+                    : '<span class="event-standard-muted">Open</span>'
+                }
               </td>
             </tr>
           `);
@@ -575,24 +622,29 @@ function renderMeetEditForm(detail) {
     return;
   }
 
-  meetEditName.value = detail && detail.meet && detail.meet.meet_name ? detail.meet.meet_name : "";
-  meetEditLocation.value = detail && detail.meet && detail.meet.location ? detail.meet.location : "";
-  meetEditHostTeam.value = detail && detail.meet && detail.meet.host_team ? detail.meet.host_team : "";
-  
+  meetEditName.value =
+    detail && detail.meet && detail.meet.meet_name ? detail.meet.meet_name : "";
+  meetEditLocation.value =
+    detail && detail.meet && detail.meet.location ? detail.meet.location : "";
+  meetEditHostTeam.value =
+    detail && detail.meet && detail.meet.host_team ? detail.meet.host_team : "";
+
   // Get date range from meet days
-  const dayCount = Array.isArray(detail && detail.days) ? detail.days.length : 0;
+  const dayCount = Array.isArray(detail && detail.days)
+    ? detail.days.length
+    : 0;
   if (dayCount > 0) {
     const dates = (detail.days || [])
       .map((day) => String(day.meet_day || "").slice(0, 10))
       .filter(Boolean)
       .sort();
-    
+
     if (dates.length > 0) {
       meetEditStartDate.value = dates[0];
       meetEditEndDate.value = dates[dates.length - 1];
     }
   }
-  
+
   hide(meetEditStatus);
   show(meetEditControls);
 }
@@ -625,7 +677,8 @@ function renderCoachEventSelection(detail) {
     })
     .join("");
 
-  eventsTbody.innerHTML = rows || '<tr><td colspan="6" class="muted-inline">No events.</td></tr>';
+  eventsTbody.innerHTML =
+    rows || '<tr><td colspan="6" class="muted-inline">No events.</td></tr>';
   hide(coachSelectionStatus);
   show(coachEventControls);
 }
@@ -642,16 +695,23 @@ function renderDeclarationTable(detail) {
     age_group: row.age_group || "",
     gender: row.gender || "",
   }));
-  
+
   // Debug: Log what we have
   console.log("renderDeclarationTable - dayValues:", dayValues);
-  console.log("renderDeclarationTable - detail.declaration_eligibility:", detail.declaration_eligibility);
-  
+  console.log(
+    "renderDeclarationTable - detail.declaration_eligibility:",
+    detail.declaration_eligibility,
+  );
+
   const declarationMap = new Map();
 
   (detail.declarations || []).forEach((entry) => {
     declarationMap.set(
-      declarationSessionKey(entry.swimmer_id, entry.meet_day, entry.session_label),
+      declarationSessionKey(
+        entry.swimmer_id,
+        entry.meet_day,
+        entry.session_label,
+      ),
       {
         status: entry.status || "maybe",
       },
@@ -661,7 +721,11 @@ function renderDeclarationTable(detail) {
   // Build eligibility map: swimmerId|meet_day|session_label -> allowed
   const eligibilityMap = new Map();
   (detail.declaration_eligibility || []).forEach((entry) => {
-    const key = declarationSessionKey(entry.swimmer_id, entry.meet_day, entry.session_label);
+    const key = declarationSessionKey(
+      entry.swimmer_id,
+      entry.meet_day,
+      entry.session_label,
+    );
     eligibilityMap.set(key, entry.allowed);
   });
 
@@ -673,13 +737,21 @@ function renderDeclarationTable(detail) {
 
     // Filter to only eligible sessions for this swimmer
     const eligibleSessions = dayValues.filter((dayInfo) => {
-      const key = declarationSessionKey(swimmer.swimmer_id, dayInfo.meet_day, dayInfo.session_label);
+      const key = declarationSessionKey(
+        swimmer.swimmer_id,
+        dayInfo.meet_day,
+        dayInfo.session_label,
+      );
       const isEligible = eligibilityMap.get(key) === true;
-      console.log(`Checking swimmer ${swimmer.swimmer_id} on ${dayInfo.meet_day} "${dayInfo.session_label}": key="${key}" eligible=${isEligible}`);
+      console.log(
+        `Checking swimmer ${swimmer.swimmer_id} on ${dayInfo.meet_day} "${dayInfo.session_label}": key="${key}" eligible=${isEligible}`,
+      );
       return isEligible;
     });
 
-    console.log(`Swimmer ${swimmer.swimmer_name}: ${eligibleSessions.length} eligible sessions`);
+    console.log(
+      `Swimmer ${swimmer.swimmer_name}: ${eligibleSessions.length} eligible sessions`,
+    );
 
     if (!eligibleSessions.length) {
       return; // Skip swimmers with no eligible sessions
@@ -687,12 +759,18 @@ function renderDeclarationTable(detail) {
 
     const sessionRows = eligibleSessions
       .map((dayInfo) => {
-        const key = declarationSessionKey(swimmer.swimmer_id, dayInfo.meet_day, dayInfo.session_label);
+        const key = declarationSessionKey(
+          swimmer.swimmer_id,
+          dayInfo.meet_day,
+          dayInfo.session_label,
+        );
         const existing = declarationMap.get(key) || { status: "no" };
         const statusValue = existing.status === "yes" ? "yes" : "no";
         const sessionName = dayInfo.session_label || "Session";
         const heading = `${sessionName} • ${formatDate(dayInfo.meet_day)}`;
-        const ruleBits = [dayInfo.age_group || "", dayInfo.gender || ""].filter(Boolean).join(" • ");
+        const ruleBits = [dayInfo.age_group || "", dayInfo.gender || ""]
+          .filter(Boolean)
+          .join(" • ");
         const eligibilityText = ruleBits ? `Eligible: ${ruleBits}` : "Eligible";
 
         return `
@@ -719,7 +797,8 @@ function renderDeclarationTable(detail) {
   });
 
   declareTbody.innerHTML =
-    cards.join("") || '<div class="muted-inline" style="padding:0.65rem;">No eligible swimmers or meet days.</div>';
+    cards.join("") ||
+    '<div class="muted-inline" style="padding:0.65rem;">No eligible swimmers or meet days.</div>';
   hide(declareStatus);
   show(declareControls);
 }
@@ -744,7 +823,9 @@ function renderCoachEntryTable(detail) {
     ]),
   );
   const entrySet = new Set(
-    (detail.entries || []).map((row) => `${Number(row.swimmer_id)}|${Number(row.meet_event_id)}`),
+    (detail.entries || []).map(
+      (row) => `${Number(row.swimmer_id)}|${Number(row.meet_event_id)}`,
+    ),
   );
 
   const rows = [];
@@ -775,10 +856,26 @@ function renderCoachEntryTable(detail) {
       .map(([sessionLabel, sessionEvents]) => {
         const eventRows = sessionEvents
           .map((event) => {
-            const checked = entrySet.has(`${swimmerId}|${Number(event.id)}`) ? "checked" : "";
+            const checked = entrySet.has(`${swimmerId}|${Number(event.id)}`)
+              ? "checked"
+              : "";
             const parsed = parseEventNameWithSession(event.event_name || "");
             const displayName = parsed.eventTitle || event.event_name;
-            return `<label class="checkbox-row" style="margin:0 0 0.35rem 0;"><input type="checkbox" data-entry-swimmer="${swimmerId}" data-entry-event="${event.id}" ${checked} /><span>${escHtml(displayName)}</span></label>`;
+            // Determine best time for this swimmer/event
+            const bestTimeText =
+              getBestTimeForSwimmerAndEvent(detail, swimmerId, event) || "NT";
+
+            return `
+              <div class="entry-row" style="display:flex; align-items:center; gap:0.6rem; margin:0 0 0.45rem 0;">
+                <label style="display:flex; align-items:center; gap:0.5rem; margin:0;">
+                  <input type="checkbox" data-entry-swimmer="${swimmerId}" data-entry-event="${event.id}" ${checked} />
+                  <span>${escHtml(displayName)}</span>
+                </label>
+                <div style="margin-left:auto; display:flex; gap:0.5rem; align-items:center;">
+                  <button type="button" class="btn btn-link btn-time" data-time-display data-swimmer="${swimmerId}" data-event="${event.id}" style="color:#0b66ff; border:0; background:transparent; cursor:pointer; padding:0;">${escHtml(bestTimeText)}</button>
+                  <button type="button" class="btn btn-secondary btn-custom-time" data-open-custom data-swimmer="${swimmerId}" data-event="${event.id}" style="font-size:0.85rem;">Custom</button>
+                </div>
+              </div>`;
           })
           .join("");
         return `
@@ -802,10 +899,96 @@ function renderCoachEntryTable(detail) {
     `);
   });
 
-  coachEntryTbody.innerHTML = rows.join("") || '<tr><td colspan="2" class="muted-inline">No swimmers with "Yes" declarations yet.</td></tr>';
+  coachEntryTbody.innerHTML =
+    rows.join("") ||
+    '<tr><td colspan="2" class="muted-inline">No swimmers with "Yes" declarations yet.</td></tr>';
   hide(coachEntryStatus);
   show(coachEntryControls);
 }
+
+function getBestTimeForSwimmerAndEvent(detail, swimmerId, event) {
+  try {
+    if (!detail || !Array.isArray(detail.best_times) || !event) return null;
+    const stroke = String(event.stroke || "").trim();
+    const distance = Number(event.distance_meters) || null;
+
+    // find exact match by swimmer, stroke and distance
+    const match = detail.best_times.find((bt) => {
+      return (
+        Number(bt.swimmer_id) === Number(swimmerId) &&
+        String(bt.stroke || "")
+          .trim()
+          .toLowerCase() ===
+          String(stroke || "")
+            .trim()
+            .toLowerCase() &&
+        (distance == null
+          ? false
+          : Number(bt.distance_meters) === Number(distance))
+      );
+    });
+
+    if (match)
+      return (
+        match.best_time_text ||
+        (match.best_time_seconds != null
+          ? String(match.best_time_seconds)
+          : null)
+      );
+    return null;
+  } catch (e) {
+    return null;
+  }
+}
+
+// Handle custom time UI for coach entry table
+coachEntryTbody.addEventListener("click", (ev) => {
+  const openBtn = ev.target.closest("button[data-open-custom]");
+  if (!openBtn) return;
+  const swimmerId = Number(openBtn.getAttribute("data-swimmer"));
+  const eventId = Number(openBtn.getAttribute("data-event"));
+  if (!Number.isInteger(swimmerId) || !Number.isInteger(eventId)) return;
+
+  // Ask user to enter a custom time (simple prompt for now)
+  const currentVal =
+    (selectedMeetDetail &&
+      selectedMeetDetail._custom_entry_times &&
+      selectedMeetDetail._custom_entry_times[`${swimmerId}|${eventId}`]) ||
+    "";
+  const custom = window.prompt(
+    "Enter custom time (e.g. 1:30.00) or leave blank to clear:",
+    currentVal || "",
+  );
+  if (custom === null) return; // cancelled
+
+  // store on selectedMeetDetail for now
+  if (!selectedMeetDetail) selectedMeetDetail = detail;
+  if (!selectedMeetDetail._custom_entry_times)
+    selectedMeetDetail._custom_entry_times = {};
+  const key = `${swimmerId}|${eventId}`;
+  if (custom && String(custom).trim()) {
+    selectedMeetDetail._custom_entry_times[key] = String(custom).trim();
+  } else {
+    delete selectedMeetDetail._custom_entry_times[key];
+  }
+
+  // Update displayed button text
+  const timeButton = coachEntryTbody.querySelector(
+    `button[data-time-display][data-swimmer="${swimmerId}"][data-event="${eventId}"]`,
+  );
+  if (timeButton) {
+    const eventObj =
+      selectedMeetDetail && Array.isArray(selectedMeetDetail.events)
+        ? selectedMeetDetail.events.find(
+            (ev) => Number(ev.id) === Number(eventId),
+          )
+        : null;
+    timeButton.textContent =
+      selectedMeetDetail._custom_entry_times[key] ||
+      getBestTimeForSwimmerAndEvent(detail, swimmerId, eventObj) ||
+      "NT";
+  }
+});
 
 async function loadMeetDetail(meetId) {
   try {
@@ -905,34 +1088,34 @@ async function loadSwimmerOptionsForManualTime() {
 
     if (!swimmers.length) {
       if (timeSwimmerName) {
-        timeSwimmerName.innerHTML = '<option value="">No swimmers found</option>';
+        timeSwimmerName.innerHTML =
+          '<option value="">No swimmers found</option>';
       }
       if (timesImportSwimmer) {
-        timesImportSwimmer.innerHTML = '<option value="">No swimmers found</option>';
+        timesImportSwimmer.innerHTML =
+          '<option value="">No swimmers found</option>';
       }
       return;
     }
 
     const options = swimmers
-      .map(
-        (swimmer) => {
-          const swimmerId =
-            swimmer && swimmer.swimmer_id != null
-              ? swimmer.swimmer_id
-              : swimmer && swimmer.id != null
-                ? swimmer.id
-                : "";
-          const swimmerName =
-            swimmer && (swimmer.swimmer_name || swimmer.name || swimmer.email)
-              ? swimmer.swimmer_name || swimmer.name || swimmer.email
-              : `Swimmer ${swimmerId || ""}`.trim();
-          const groupSuffix =
-            swimmer && swimmer.group_name
-              ? ` (${escHtml(swimmer.group_name)})`
+      .map((swimmer) => {
+        const swimmerId =
+          swimmer && swimmer.swimmer_id != null
+            ? swimmer.swimmer_id
+            : swimmer && swimmer.id != null
+              ? swimmer.id
               : "";
-          return `<option value="${escHtml(swimmerId)}">${escHtml(swimmerName)}${groupSuffix}</option>`;
-        },
-      )
+        const swimmerName =
+          swimmer && (swimmer.swimmer_name || swimmer.name || swimmer.email)
+            ? swimmer.swimmer_name || swimmer.name || swimmer.email
+            : `Swimmer ${swimmerId || ""}`.trim();
+        const groupSuffix =
+          swimmer && swimmer.group_name
+            ? ` (${escHtml(swimmer.group_name)})`
+            : "";
+        return `<option value="${escHtml(swimmerId)}">${escHtml(swimmerName)}${groupSuffix}</option>`;
+      })
       .join("");
 
     if (timeSwimmerName) {
@@ -976,12 +1159,18 @@ async function loadSwimmerOptionsForManualTime() {
     }
   } catch (error) {
     if (timeSwimmerName) {
-      timeSwimmerName.innerHTML = '<option value="">Failed to load swimmers</option>';
+      timeSwimmerName.innerHTML =
+        '<option value="">Failed to load swimmers</option>';
     }
     if (timesImportSwimmer) {
-      timesImportSwimmer.innerHTML = '<option value="">Failed to load swimmers</option>';
+      timesImportSwimmer.innerHTML =
+        '<option value="">Failed to load swimmers</option>';
     }
-    showState(manualTimeStatus, `Could not load swimmers: ${error.message}`, "error");
+    showState(
+      manualTimeStatus,
+      `Could not load swimmers: ${error.message}`,
+      "error",
+    );
   }
 }
 
@@ -1002,7 +1191,9 @@ function isPdfFile(file) {
   if (!file) return false;
   return (
     String(file.type || "").toLowerCase() === "application/pdf" ||
-    String(file.name || "").toLowerCase().endsWith(".pdf")
+    String(file.name || "")
+      .toLowerCase()
+      .endsWith(".pdf")
   );
 }
 
@@ -1017,9 +1208,13 @@ function loadScriptTag(src) {
         return;
       }
       existing.addEventListener("load", () => resolve(), { once: true });
-      existing.addEventListener("error", () => reject(new Error(`Failed to load ${src}`)), {
-        once: true,
-      });
+      existing.addEventListener(
+        "error",
+        () => reject(new Error(`Failed to load ${src}`)),
+        {
+          once: true,
+        },
+      );
       return;
     }
 
@@ -1061,7 +1256,8 @@ async function ensurePdfJsLib() {
       }
 
       throw (
-        lastError || new Error("Unable to load PDF extraction library from CDN sources.")
+        lastError ||
+        new Error("Unable to load PDF extraction library from CDN sources.")
       );
     })();
   }
@@ -1073,7 +1269,9 @@ async function extractPdfTextInBrowser(file) {
   const pdfjsLib = await ensurePdfJsLib();
 
   if (!pdfjsLib || typeof pdfjsLib.getDocument !== "function") {
-    throw new Error("PDF text extraction library is unavailable in this browser session.");
+    throw new Error(
+      "PDF text extraction library is unavailable in this browser session.",
+    );
   }
 
   if (!pdfjsLib.GlobalWorkerOptions.workerSrc) {
@@ -1101,7 +1299,9 @@ async function extractPdfTextInBrowser(file) {
 
   const text = chunks.join("\n").trim();
   if (!text) {
-    throw new Error("The PDF appears to be image-only. Use a text-searchable PDF export.");
+    throw new Error(
+      "The PDF appears to be image-only. Use a text-searchable PDF export.",
+    );
   }
   return text;
 }
@@ -1111,7 +1311,11 @@ function uploadFileMultipart(url, filePayload, extraFields = {}) {
     method: "POST",
     body: (() => {
       const formData = new FormData();
-      formData.append("import_file", filePayload.file, filePayload.file_name || "import.pdf");
+      formData.append(
+        "import_file",
+        filePayload.file,
+        filePayload.file_name || "import.pdf",
+      );
       Object.entries(extraFields).forEach(([key, value]) => {
         if (value != null && String(value).trim() !== "") {
           formData.append(key, String(value));
@@ -1142,7 +1346,12 @@ function build413Message(prefix) {
 }
 
 function shouldRetryPdfImport(response, responseData, filePayload) {
-  if (!response || response.ok || !filePayload || !isPdfFile(filePayload.file)) {
+  if (
+    !response ||
+    response.ok ||
+    !filePayload ||
+    !isPdfFile(filePayload.file)
+  ) {
     return false;
   }
 
@@ -1150,7 +1359,9 @@ function shouldRetryPdfImport(response, responseData, filePayload) {
     return true;
   }
 
-  const message = String(responseData && responseData.message ? responseData.message : "")
+  const message = String(
+    responseData && responseData.message ? responseData.message : "",
+  )
     .toLowerCase()
     .trim();
 
@@ -1223,7 +1434,11 @@ meetImportForm.addEventListener("submit", async (event) => {
       );
     }
 
-    showState(meetImportStatus, `Meet imported: ${data.meet.meet_name}`, "info");
+    showState(
+      meetImportStatus,
+      `Meet imported: ${data.meet.meet_name}`,
+      "info",
+    );
     meetImportForm.reset();
     await loadMeets();
   } catch (error) {
@@ -1256,34 +1471,51 @@ timesImportForm.addEventListener("submit", async (event) => {
           : "",
     );
 
-    if (Number.isInteger(selectedDefaultSwimmer) && selectedDefaultSwimmer > 0) {
+    if (
+      Number.isInteger(selectedDefaultSwimmer) &&
+      selectedDefaultSwimmer > 0
+    ) {
       filePayload.default_swimmer_id = selectedDefaultSwimmer;
     }
 
-    const res = await uploadFileMultipart("/api/swimmer-times/import", filePayload, {
-      default_swimmer_id:
-        Number.isInteger(selectedDefaultSwimmer) && selectedDefaultSwimmer > 0
-          ? selectedDefaultSwimmer
-          : "",
-    });
+    const res = await uploadFileMultipart(
+      "/api/swimmer-times/import",
+      filePayload,
+      {
+        default_swimmer_id:
+          Number.isInteger(selectedDefaultSwimmer) && selectedDefaultSwimmer > 0
+            ? selectedDefaultSwimmer
+            : "",
+      },
+    );
 
     const data = await safeJson(res);
     if (!res.ok) {
       throw new Error(
         (data && data.message) ||
-          (res.status === 413 ? build413Message("Times import") : `Import failed (${res.status})`),
+          (res.status === 413
+            ? build413Message("Times import")
+            : `Import failed (${res.status})`),
       );
     }
 
     const skipped = Array.isArray(data.skipped) ? data.skipped.length : 0;
-    showState(timesImportStatus, `Imported ${data.imported} rows (${skipped} skipped).`, "info");
+    showState(
+      timesImportStatus,
+      `Imported ${data.imported} rows (${skipped} skipped).`,
+      "info",
+    );
     timesImportForm.reset();
     if (timesImportSwimmer && timesImportSwimmer.tomselect) {
       timesImportSwimmer.tomselect.clear(true);
     }
     await loadTimes();
   } catch (error) {
-    showState(timesImportStatus, `Times import failed: ${error.message}`, "error");
+    showState(
+      timesImportStatus,
+      `Times import failed: ${error.message}`,
+      "error",
+    );
   } finally {
     btnImportTimes.disabled = false;
     btnImportTimes.textContent = "Import Times";
@@ -1336,7 +1568,9 @@ meetsTbody.addEventListener("click", async (event) => {
     const meetId = Number(deleteBtn.dataset.deleteMeet);
     if (Number.isNaN(meetId)) return;
 
-    const confirmed = window.confirm("Delete this meet and all its related data?");
+    const confirmed = window.confirm(
+      "Delete this meet and all its related data?",
+    );
     if (!confirmed) return;
 
     deleteBtn.disabled = true;
@@ -1400,13 +1634,21 @@ if (declareControls) {
     const swimmerId = Number(btn.getAttribute("data-swimmer-id"));
     const day = String(btn.getAttribute("data-day") || "");
     const sessionLabel = String(btn.getAttribute("data-session-label") || "");
-    const choice = String(btn.getAttribute("data-declare-choice") || "").toLowerCase();
-    if (!Number.isInteger(swimmerId) || !day || (choice !== "yes" && choice !== "no")) {
+    const choice = String(
+      btn.getAttribute("data-declare-choice") || "",
+    ).toLowerCase();
+    if (
+      !Number.isInteger(swimmerId) ||
+      !day ||
+      (choice !== "yes" && choice !== "no")
+    ) {
       return;
     }
 
     const statusInput = Array.from(
-      declareTbody.querySelectorAll("input[data-declare-status][data-day][data-session-label]"),
+      declareTbody.querySelectorAll(
+        "input[data-declare-status][data-day][data-session-label]",
+      ),
     ).find(
       (input) =>
         Number(input.getAttribute("data-declare-status")) === swimmerId &&
@@ -1419,12 +1661,15 @@ if (declareControls) {
 
     const group = btn.closest(".declare-session-toggle");
     if (group) {
-      group.querySelectorAll("button[data-declare-choice]").forEach((choiceBtn) => {
-        choiceBtn.classList.toggle(
-          "active",
-          String(choiceBtn.getAttribute("data-declare-choice") || "") === choice,
-        );
-      });
+      group
+        .querySelectorAll("button[data-declare-choice]")
+        .forEach((choiceBtn) => {
+          choiceBtn.classList.toggle(
+            "active",
+            String(choiceBtn.getAttribute("data-declare-choice") || "") ===
+              choice,
+          );
+        });
     }
   });
 }
@@ -1433,7 +1678,9 @@ if (btnSaveDeclarations) {
   btnSaveDeclarations.addEventListener("click", async () => {
     if (!selectedMeetId) return;
 
-    const declarations = Array.from(declareTbody.querySelectorAll("input[data-declare-status]"))
+    const declarations = Array.from(
+      declareTbody.querySelectorAll("input[data-declare-status]"),
+    )
       .map((input) => ({
         swimmer_id: Number(input.getAttribute("data-declare-status")),
         meet_day: String(input.getAttribute("data-day") || ""),
@@ -1515,7 +1762,9 @@ btnSaveCoachEntries.addEventListener("click", async () => {
   if (!selectedMeetId || !selectedMeetDetail) return;
 
   const bySwimmer = new Map();
-  const swimmerRows = Array.from(coachEntryTbody.querySelectorAll("tr[data-entry-swimmer-row]"));
+  const swimmerRows = Array.from(
+    coachEntryTbody.querySelectorAll("tr[data-entry-swimmer-row]"),
+  );
   swimmerRows.forEach((row) => {
     const swimmerId = Number(row.getAttribute("data-entry-swimmer-row"));
     if (Number.isInteger(swimmerId)) {
@@ -1523,7 +1772,11 @@ btnSaveCoachEntries.addEventListener("click", async () => {
     }
   });
 
-  const checkboxes = Array.from(coachEntryTbody.querySelectorAll("input[data-entry-swimmer][data-entry-event]"));
+  const checkboxes = Array.from(
+    coachEntryTbody.querySelectorAll(
+      "input[data-entry-swimmer][data-entry-event]",
+    ),
+  );
   checkboxes.forEach((input) => {
     const swimmerId = Number(input.getAttribute("data-entry-swimmer"));
     const eventId = Number(input.getAttribute("data-entry-event"));
@@ -1534,18 +1787,41 @@ btnSaveCoachEntries.addEventListener("click", async () => {
     }
   });
 
-  const entries = Array.from(bySwimmer.entries()).map(([swimmer_id, event_ids]) => ({
-    swimmer_id,
-    event_ids,
-  }));
+  const entries = Array.from(bySwimmer.entries()).map(
+    ([swimmer_id, event_ids]) => ({
+      swimmer_id,
+      event_ids,
+    }),
+  );
 
   btnSaveCoachEntries.disabled = true;
   btnSaveCoachEntries.textContent = "Saving...";
   try {
+    // Include any custom times the coach set in the payload under `entries_with_times`.
+    const entriesWithTimes = [];
+    if (selectedMeetDetail && selectedMeetDetail._custom_entry_times) {
+      Object.entries(selectedMeetDetail._custom_entry_times).forEach(
+        ([key, timeText]) => {
+          const [swimmer_id, meet_event_id] = key
+            .split("|")
+            .map((v) => Number(v));
+          if (Number.isInteger(swimmer_id) && Number.isInteger(meet_event_id)) {
+            entriesWithTimes.push({
+              swimmer_id,
+              meet_event_id,
+              custom_time_text: String(timeText),
+            });
+          }
+        },
+      );
+    }
+
+    const payload = { entries, entries_with_times: entriesWithTimes };
+
     const res = await apiFetch(`/api/meets/${selectedMeetId}/entries`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ entries }),
+      body: JSON.stringify(payload),
     });
     const data = await safeJson(res);
     if (!res.ok) {

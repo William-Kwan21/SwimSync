@@ -28,7 +28,9 @@ const sidebarSelEnd = document.getElementById("sidebar-sel-end");
 const sidebarSelLocation = document.getElementById("sidebar-sel-location");
 const sidebarRepeatWeekly = document.getElementById("sidebar-repeat-weekly");
 const sidebarRepeatDaysRow = document.getElementById("sidebar-repeat-days-row");
-const sidebarRepeatUntilRow = document.getElementById("sidebar-repeat-until-row");
+const sidebarRepeatUntilRow = document.getElementById(
+  "sidebar-repeat-until-row",
+);
 const sidebarRepeatUntil = document.getElementById("sidebar-repeat-until");
 const sidebarSessionError = document.getElementById("sidebar-session-error");
 const btnSidebarAddSession = document.getElementById("btn-sidebar-add-session");
@@ -56,7 +58,9 @@ const btnEditSessionSave = document.getElementById("btn-edit-session-save");
 const attendanceModal = document.getElementById("attendance-modal");
 const attendanceForm = document.getElementById("attendance-form");
 const attendanceSessionId = document.getElementById("attendance-session-id");
-const attendanceSessionLabel = document.getElementById("attendance-session-label");
+const attendanceSessionLabel = document.getElementById(
+  "attendance-session-label",
+);
 const attendanceSetAll = document.getElementById("attendance-set-all");
 const attendanceTbody = document.getElementById("attendance-tbody");
 const attendanceError = document.getElementById("attendance-error");
@@ -138,11 +142,7 @@ async function themedConfirm(message, title = "Please Confirm") {
 }
 
 function syncRepeatDaysVisibility() {
-  if (
-    !sidebarRepeatDaysRow ||
-    !sidebarRepeatUntilRow ||
-    !sidebarRepeatWeekly
-  ) {
+  if (!sidebarRepeatDaysRow || !sidebarRepeatUntilRow || !sidebarRepeatWeekly) {
     return;
   }
 
@@ -192,8 +192,7 @@ function weekdayFromRepeatCheckbox(checkboxEl) {
 
   const labelEl = checkboxEl.closest("label");
   const dayText = labelEl
-    ? (labelEl.querySelector("span")?.textContent || "").trim()
-        .toLowerCase()
+    ? (labelEl.querySelector("span")?.textContent || "").trim().toLowerCase()
     : "";
 
   const byLabel = {
@@ -574,9 +573,15 @@ async function loadGroups() {
       resetSelectOptions(editSessionGroup, fallbackOptions);
     }
   } catch {
-    resetSelectOptions(sidebarSelGroup, `<option value="">Error loading</option>`);
+    resetSelectOptions(
+      sidebarSelGroup,
+      `<option value="">Error loading</option>`,
+    );
     if (editSessionGroup) {
-      resetSelectOptions(editSessionGroup, `<option value="">Error loading</option>`);
+      resetSelectOptions(
+        editSessionGroup,
+        `<option value="">Error loading</option>`,
+      );
     }
   }
 }
@@ -599,13 +604,17 @@ async function loadSchedule() {
 
   try {
     const isDateFiltered = Boolean(viewDate.value);
-    const query = isDateFiltered ? `?date=${encodeURIComponent(viewDate.value)}` : "";
+    const query = isDateFiltered
+      ? `?date=${encodeURIComponent(viewDate.value)}`
+      : "";
     const res = await apiFetch(`/api/schedule${query}`);
     const rawSessions = await res.json();
     const sessions = isDateFiltered
       ? rawSessions
       : rawSessions.filter((session) => {
-          const dateValue = new Date(`${toDateKey(session.practice_date)}T00:00:00`);
+          const dateValue = new Date(
+            `${toDateKey(session.practice_date)}T00:00:00`,
+          );
           if (Number.isNaN(dateValue.getTime())) {
             return false;
           }
@@ -755,7 +764,9 @@ async function openAttendanceModal(sessionId) {
       const teamData = await safeJson(teamRes);
       if (teamRes.ok && teamData && Array.isArray(teamData.swimmers)) {
         swimmers = teamData.swimmers
-          .filter((swimmer) => Number(swimmer.group_id) === Number(session.group_id))
+          .filter(
+            (swimmer) => Number(swimmer.group_id) === Number(session.group_id),
+          )
           .map((swimmer) => ({
             swimmer_id: swimmer.swimmer_id,
             name: swimmer.name,
@@ -822,7 +833,9 @@ async function submitAttendance() {
     return;
   }
 
-  const rows = Array.from(attendanceTbody.querySelectorAll("tr[data-swimmer-id]"));
+  const rows = Array.from(
+    attendanceTbody.querySelectorAll("tr[data-swimmer-id]"),
+  );
   const entries = rows
     .map((row) => {
       const swimmerId = Number(row.dataset.swimmerId);
@@ -916,7 +929,10 @@ async function submitSessionEdit() {
   editSessionError.classList.add("error");
 
   if (!sessionId || !nextDate || !nextStart || !nextEnd || !nextGroupId) {
-    showErr(editSessionError, "Group, date, start time, and end time are required.");
+    showErr(
+      editSessionError,
+      "Group, date, start time, and end time are required.",
+    );
     return;
   }
 
@@ -1202,10 +1218,18 @@ if (attendanceModal) {
 }
 
 document.addEventListener("keydown", (e) => {
-  if (e.key === "Escape" && editSessionModal && !editSessionModal.classList.contains("hidden")) {
+  if (
+    e.key === "Escape" &&
+    editSessionModal &&
+    !editSessionModal.classList.contains("hidden")
+  ) {
     closeEditSessionModal();
   }
-  if (e.key === "Escape" && attendanceModal && !attendanceModal.classList.contains("hidden")) {
+  if (
+    e.key === "Escape" &&
+    attendanceModal &&
+    !attendanceModal.classList.contains("hidden")
+  ) {
     closeAttendanceModal();
   }
 });
