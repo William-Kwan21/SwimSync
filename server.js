@@ -1125,7 +1125,8 @@ function splitInviteSessionBlocks(content) {
   console.log("🔍 splitInviteSessionBlocks input (first 500 chars):", text.slice(0, 500));
 
   // Pattern 1: "Friday AM Session" or "Friday AM" or "Friday Afternoon" or "Friday PM Session" or "Saturday PM Session"
-  const headingRegex = /\b(Friday|Saturday|Sunday)\s+(AM|PM|MID(?:-?DAY)?|AFTERNOON|MORNING)(?:\s+Session)?\b/gi;
+  // Updated: removed trailing \b to handle more variations
+  const headingRegex = /\b(Friday|Saturday|Sunday)\s+(AM|PM|MID(?:-?DAY)?|AFTERNOON|MORNING)(?:\s+Session)?/gi;
   let match;
   let pattern1Count = 0;
   while ((match = headingRegex.exec(text))) {
@@ -1141,6 +1142,16 @@ function splitInviteSessionBlocks(content) {
     pattern2Count++;
     console.log("🔍 Pattern 2 (summary):", match[0], "at index", match.index);
     addMatch(match.index, match[1], match[0].length, match[2] || "");
+  }
+
+  // Pattern 2b: "Friday" or "Saturday" or "Sunday" standing alone as session headers
+  const dayHeaderRegex = /(?:^|\n)\s*(Friday|Saturday|Sunday)\s*(?:\n|$)/gi;
+  let pattern2bCount = 0;
+  while ((match = dayHeaderRegex.exec(text))) {
+    pattern2bCount++;
+    console.log("🔍 Pattern 2b (day header):", match[1], "at index", match.index);
+    // For day-only headers, we'll treat as default "PM" or try to infer from context
+    addMatch(match.index + match[0].indexOf(match[1]), match[1], match[1].length, "");
   }
 
   // Pattern 3: "Warm-Up 7:15 AM" or "Warm-up: 7:15 AM" (detect period from warmup times)
@@ -1172,7 +1183,7 @@ function splitInviteSessionBlocks(content) {
   }
 
   // Pattern 4: "Start: HH:MM AM/PM" (fallback)
-  const startRegex = /\bStart\s*:\s*(\d{1,2}):(\d{2})\s*(AM|PM)\b/gi;
+  const startRegex = /\bStart\s*:\s*(\d{1,2}):(\d{2})\s*(AM|PM)/gi;
   let pattern4Count = 0;
   while ((match = startRegex.exec(text))) {
     pattern4Count++;
@@ -1181,7 +1192,7 @@ function splitInviteSessionBlocks(content) {
     addMatch(match.index, dayName, match[0].length, match[3]);
   }
 
-  console.log("🔍 Pattern matches found:", { pattern1: pattern1Count, pattern2: pattern2Count, pattern3: pattern3Count, pattern4: pattern4Count, totalMatches: matches.length });
+  console.log("🔍 Pattern matches found:", { pattern1: pattern1Count, pattern2: pattern2Count, pattern2b: pattern2bCount, pattern3: pattern3Count, pattern4: pattern4Count, totalMatches: matches.length });
 
   if (matches.length > 1) {
     matches.sort((a, b) => a.index - b.index);
@@ -1203,6 +1214,32 @@ function splitInviteSessionBlocks(content) {
 
   console.log("🔍 After dedup:", deduped.length, "unique sessions");
 
+  // FALLBACK: If no sessions detected, try to find day names in the text as fallback
+  if (!deduped.length) {
+    console.log("🔍 No sessions detected with main patterns. Trying fallback...");
+    
+    // Try to find at least one day mention as a fallback
+    const dayFallbackMatch = /\b(Friday|Saturday|Sunday)\b/i.exec(text);
+    if (dayFallbackMatch) {
+      console.log("🔍 Found fallback day:", dayFallbackMatch[1]);
+      deduped.push({
+        index: 0,
+        dayName: dayFallbackMatch[1],
+        sessionLabel: "Session",
+        length: 0
+      });
+    } else {
+      // Last resort: assume Saturday PM
+      console.log("🔍 No day found, defaulting to Saturday PM");
+      deduped.push({
+        index: 0,
+        dayName: "Saturday",
+        sessionLabel: "PM",
+        length: 0
+      });
+    }
+  }
+
   if (!deduped.length) {
     return [];
   }
@@ -1219,6 +1256,46 @@ function splitInviteSessionBlocks(content) {
   });
 
   return result;
+}
+
+function extractInviteSessionDaysFromText(content, meetDate) {
+  const text = String(content || "").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+  const matches = [];
+  const seen = new Set();
+
+  const addMatch = (index, dayName, sessionRaw) => {
+    const normalizedSession = normalizeInviteSessionPeriod(sessionRaw || "PM");
+    const sessionDate = meetDate
+      ? addDaysToDateOnly(meetDate, getDayOffsetFromDate(meetDate, dayName))
+      : null;
+    if (!sessionDate) return;
+
+    const key = `${sessionDate}|${dayName}|${normalizedSession}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+
+    matches.push({
+      index,
+      meet_day: sessionDate,
+      session_label: `${dayName} ${normalizedSession}`.trim(),
+      age_group: null,
+      gender: null,
+    });
+  };
+
+  const headingRegex = /\b(Friday|Saturday|Sunday)\s+(AM|PM|MID(?:-?DAY)?|AFTERNOON|MORNING)(?:\s+Session)?/gi;
+  let match;
+  while ((match = headingRegex.exec(text)) !== null) {
+    addMatch(match.index, match[1], match[2]);
+  }
+
+  const summaryRegex = /\bSession\s*\d+\s*:\s*(Friday|Saturday|Sunday)\s*(AM|PM|MID(?:-?DAY)?|AFTERNOON|MORNING)?/gi;
+  while ((match = summaryRegex.exec(text)) !== null) {
+    addMatch(match.index, match[1], match[2] || "PM");
+  }
+
+  matches.sort((a, b) => a.index - b.index);
+  return matches.map(({ index, ...day }) => day);
 }
 
 function extractWarmupTimeFromBlock(blockText) {
@@ -1466,6 +1543,7 @@ function parseInviteSessionEventsFromText(content, options = {}) {
   }
   
   meetDate = normalizeDateOnly(meetDate);
+  console.log("🔍 parseInviteSessionEventsFromText meetDate:", meetDate, "blocks:", blocks.length);
 
   if (!blocks.length) {
     return { days: [], events: [] };
@@ -1527,14 +1605,26 @@ function parseInviteSessionEventsFromText(content, options = {}) {
       ...event,
       session_label: sessionLabel,
       meet_day: eventSessionDate,
-      event_name: limitTextLength(`[${sessionLabel}] ${event.event_name}`, 150),
+      event_name: limitTextLength(`[${sessionLabel}] ${event.event_name}`, 500),
     }));
 
     events.push(...blockEvents);
   });
 
   const normalizedDays = normalizeMeetDayEntries(Array.from(dayMap.values()), meetDate);
-  return { days: normalizedDays, events };
+  const fallbackDays = normalizedDays.length <= 1 ? extractInviteSessionDaysFromText(content, meetDate) : [];
+  const finalDays = fallbackDays.length > normalizedDays.length ? normalizeMeetDayEntries(fallbackDays, meetDate) : normalizedDays;
+
+  if (fallbackDays.length > normalizedDays.length) {
+    console.log("🔍 Session fallback recovered", finalDays.length, "days:", finalDays.map((d) => ({
+      meet_day: d.meet_day,
+      session_label: d.session_label,
+    })));
+  }
+
+  console.log("🔍 parseInviteSessionEventsFromText returning:", finalDays.length, "days,", events.length, "events");
+  console.log("🔍 Days returned:", finalDays.map(d => ({ meet_day: d.meet_day, session_label: d.session_label })));
+  return { days: finalDays, events };
 }
 
 function parseMeetEventsFromPlainText(content) {
@@ -3334,6 +3424,16 @@ app.post(
         .sort();
       const startDate = meetDays.length > 0 ? meetDays[0] : normalizeDateOnly(parsedMeet.meet_date);
       const endDate = meetDays.length > 0 ? meetDays[meetDays.length - 1] : normalizeDateOnly(parsedMeet.meet_date);
+
+      console.log("🔍 IMPORT DEBUG - parsedMeet.days:", parsedMeet.days.length, "days");
+      console.log("🔍 IMPORT DEBUG - parsedMeet.days details:", parsedMeet.days.map(d => ({
+        meet_day: d.meet_day,
+        session_label: d.session_label,
+        age_group: d.age_group,
+        gender: d.gender
+      })));
+      console.log("🔍 IMPORT DEBUG - meetDays (unique dates):", meetDays);
+      console.log("🔍 IMPORT DEBUG - startDate:", startDate, "endDate:", endDate);
 
       const [meetResult] = await connection.query(
         `INSERT INTO meets (meet_name, meet_date, location, host_team, import_filename, start_date, end_date, created_by_coach_id)

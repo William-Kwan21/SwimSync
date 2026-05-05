@@ -306,7 +306,12 @@ function declarationSessionKey(swimmerId, meetDay, sessionLabel) {
 
 function renderMeetDays(days) {
   meetDays.innerHTML = days
-    .map((row) => `<span class="chip">${escHtml(formatDate(row.meet_day))}</span>`)
+    .map((row) => {
+      const sessionLabel = String(row.session_label || "").trim();
+      const dateLabel = formatDate(row.meet_day);
+      const chipLabel = sessionLabel ? `${sessionLabel} • ${dateLabel}` : dateLabel;
+      return `<span class="chip">${escHtml(chipLabel)}</span>`;
+    })
     .join("");
 }
 
