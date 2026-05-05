@@ -358,6 +358,26 @@ async function initDatabase(config) {
     }
   }
 
+  try {
+    await admin.query(
+      "ALTER TABLE meets ADD COLUMN start_date DATE NULL AFTER import_filename",
+    );
+  } catch (error) {
+    if (error.code !== "ER_DUP_FIELDNAME") {
+      throw error;
+    }
+  }
+
+  try {
+    await admin.query(
+      "ALTER TABLE meets ADD COLUMN end_date DATE NULL AFTER start_date",
+    );
+  } catch (error) {
+    if (error.code !== "ER_DUP_FIELDNAME") {
+      throw error;
+    }
+  }
+
   await admin.query(`
     CREATE TABLE IF NOT EXISTS meet_events (
       id INT AUTO_INCREMENT PRIMARY KEY,

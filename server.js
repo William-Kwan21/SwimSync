@@ -950,11 +950,11 @@ function extractAgeGroupFromText(text) {
   if (!raw) return null;
 
   const patterns = [
-    /\b(\d{1,2}\s*(?:-|to|\/)\s*\d{1,2})\b/i,
-    /\b(\d{1,2}\s*(?:&|and)\s*under)\b/i,
-    /\b(\d{1,2}\s*(?:&|and)\s*over)\b/i,
-    /\b(\d{1,2}\s*U)\b/i,
-    /\b(open|senior|junior)\b/i,
+    /\b(\d{1,2}\s*(?:-|to|\/|\s)\s*\d{1,2})\b/i,  // "13-14", "13 - 14", "13 to 14", "13 14"
+    /\b(\d{1,2}\s*(?:&|and)\s*under)\b/i,        // "12 & Under", "12 & under"
+    /\b(\d{1,2}\s*(?:&|and)\s*over)\b/i,         // "13 & Over", "13 & over"
+    /\b(\d{1,2}\s*U(?:nder)?)\b/i,               // "12U", "12Under"
+    /\b(open|senior|junior)\b/i,                // "Open", "Senior", "Junior"
   ];
 
   for (const pattern of patterns) {
@@ -1062,6 +1062,10 @@ function normalizeInviteSessionPeriod(value) {
   if (raw === "AM" || raw === "PM") return raw;
   if (raw === "MORNING") return "AM";
   if (raw === "AFTERNOON") return "PM";
+  // Double-check for "Afternoon" string format
+  const lowerVal = String(value || "").toLowerCase();
+  if (lowerVal.includes("afternoon")) return "PM";
+  if (lowerVal.includes("morning")) return "AM";
   return String(value || "")
     .replace(/\s+/g, " ")
     .trim()
@@ -1120,7 +1124,7 @@ function splitInviteSessionBlocks(content) {
 
   console.log("🔍 splitInviteSessionBlocks input (first 500 chars):", text.slice(0, 500));
 
-  // Pattern 1: "Friday AM Session" or "Friday AM" or "Friday Afternoon"
+  // Pattern 1: "Friday AM Session" or "Friday AM" or "Friday Afternoon" or "Friday PM Session" or "Saturday PM Session"
   const headingRegex = /\b(Friday|Saturday|Sunday)\s+(AM|PM|MID(?:-?DAY)?|AFTERNOON|MORNING)(?:\s+Session)?\b/gi;
   let match;
   let pattern1Count = 0;
@@ -3323,15 +3327,25 @@ app.post(
 
       const coachId = await getCoachIdForUser(req.user.sub);
 
+      // Calculate date range from all meet days
+      const meetDays = (parsedMeet.days || [])
+        .map(d => normalizeDateOnly(d && d.meet_day))
+        .filter(Boolean)
+        .sort();
+      const startDate = meetDays.length > 0 ? meetDays[0] : normalizeDateOnly(parsedMeet.meet_date);
+      const endDate = meetDays.length > 0 ? meetDays[meetDays.length - 1] : normalizeDateOnly(parsedMeet.meet_date);
+
       const [meetResult] = await connection.query(
-        `INSERT INTO meets (meet_name, meet_date, location, host_team, import_filename, created_by_coach_id)
-         VALUES (?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO meets (meet_name, meet_date, location, host_team, import_filename, start_date, end_date, created_by_coach_id)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           parsedMeet.meet_name,
           parsedMeet.meet_date,
           parsedMeet.location,
           parsedMeet.host_team,
           payload && payload.file_name ? String(payload.file_name).slice(0, 255) : null,
+          startDate,
+          endDate,
           coachId,
         ],
       );
@@ -3343,6 +3357,12 @@ app.post(
           parsedMeet.days,
           parsedMeet.meet_date,
         ).filter((day) => normalizeDateOnly(day && day.meet_day));
+
+        console.log("🔍 normalizedImportDays to be inserted:", normalizedImportDays.map(d => ({
+          meet_day: d.meet_day,
+          session_label: d.session_label,
+          warmup_time: d.warmup_time
+        })));
 
         if (!normalizedImportDays.length) {
           throw new Error("No valid meet days could be derived from the imported file");
@@ -3687,7 +3707,7 @@ app.get("/api/meets/:id", authenticate, async (req, res) => {
 
   try {
     const [meetRows] = await pool.query(
-      `SELECT id, meet_name, meet_date, location, host_team, import_filename, created_at
+      `SELECT id, meet_name, meet_date, location, host_team, import_filename, start_date, end_date, created_at
        FROM meets
        WHERE id = ?
        LIMIT 1`,

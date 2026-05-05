@@ -318,6 +318,23 @@ function renderImportantInfo(detail) {
   const meet = detail && detail.meet ? detail.meet : {};
   const days = Array.isArray(detail && detail.days) ? detail.days : [];
 
+  // Build date range section
+  let dateRangeHtml = "";
+  if (meet.start_date || meet.end_date) {
+    const startDateStr = meet.start_date ? formatDate(meet.start_date) : "TBD";
+    const endDateStr = meet.end_date ? formatDate(meet.end_date) : "TBD";
+    const dateRangeText = meet.start_date && meet.end_date && meet.start_date !== meet.end_date
+      ? `${startDateStr} to ${endDateStr}`
+      : startDateStr;
+
+    dateRangeHtml = `
+      <div style="padding: 0.75rem; border: 1px solid #dee2e6; border-radius: 4px;">
+        <div style="font-weight: 600; margin-bottom: 0.5rem;">Date Range</div>
+        <div>${escHtml(dateRangeText)}</div>
+      </div>
+    `;
+  }
+
   // Build location section
   let locationHtml = "";
   if (meet.location) {
@@ -369,7 +386,7 @@ function renderImportantInfo(detail) {
     `;
   }
 
-  const contentHtml = [locationHtml, warmupHtml, fileHtml].filter(Boolean).join("");
+  const contentHtml = [dateRangeHtml, locationHtml, warmupHtml, fileHtml].filter(Boolean).join("");
 
   if (contentHtml) {
     importantInfoContent.innerHTML = contentHtml;
