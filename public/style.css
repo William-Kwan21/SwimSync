@@ -328,9 +328,26 @@ main {
 }
 
 .state-msg.info {
-  border-color: #a6dcec;
-  background: #ecf9fd;
-  color: #165f85;
+  border-color: #7ecfe8;
+  background: linear-gradient(180deg, #e9fbff, #dcf5fb);
+  color: #0f4d6b;
+  font-weight: 600;
+}
+
+.modal-card .state-msg.info,
+#attendance-session-label {
+  border-color: rgba(26, 117, 170, 0.26);
+  background: linear-gradient(180deg, rgba(233, 250, 255, 0.98), rgba(217, 244, 252, 0.98));
+  color: #0f4d6b;
+  font-weight: 700;
+}
+
+body[data-theme="dark"] .state-msg.info,
+body[data-theme="dark"] .modal-card .state-msg.info,
+body[data-theme="dark"] #attendance-session-label {
+  border-color: rgba(126, 207, 232, 0.28);
+  background: rgba(24, 39, 58, 0.94);
+  color: #dff8ff;
 }
 
 .hidden {
@@ -1006,6 +1023,12 @@ tbody tr:hover {
   padding: 1.1rem;
 }
 
+body[data-theme="dark"] .modal-card {
+  background: linear-gradient(180deg, rgba(10, 18, 28, 0.96), rgba(14, 25, 38, 0.93));
+  border-color: rgba(148, 177, 204, 0.16);
+  color: #edf5fb;
+}
+
 .ui-popup-backdrop {
   position: fixed;
   inset: 0;
@@ -1532,6 +1555,20 @@ body[data-theme="dark"] .ts-wrapper .ts-control .ts-placeholder {
 body[data-theme="dark"] .ts-wrapper.focus .ts-control {
   border-color: var(--theme-accent);
   box-shadow: 0 0 0 3px rgba(26, 117, 170, 0.22);
+}
+
+.important-info-panel {
+  margin-top: 1rem;
+  padding: 1rem;
+  border-left: 4px solid var(--theme-accent);
+  border-radius: 12px;
+  background: linear-gradient(180deg, rgba(247, 251, 255, 0.98), rgba(235, 245, 251, 0.98));
+  border: 1px solid rgba(20, 80, 122, 0.14);
+}
+
+body[data-theme="dark"] .important-info-panel {
+  background: linear-gradient(180deg, rgba(12, 20, 31, 0.95), rgba(15, 27, 41, 0.94));
+  border-color: rgba(148, 177, 204, 0.16);
 }
 
 body[data-theme="dark"] .ts-wrapper .ts-control input {
