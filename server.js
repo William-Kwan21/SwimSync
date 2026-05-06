@@ -2744,6 +2744,207 @@ app.post("/api/login", async (req, res) => {
 });
 
 app.post("/api/signup", async (req, res) => {
+  const accountType = String(req.body && req.body.account_type ? req.body.account_type : req.body.role || "").trim().toLowerCase();
+  const parentPayload = req.body && req.body.parent ? req.body.parent : req.body;
+  const swimmerPayloads = Array.isArray(req.body && req.body.swimmers) ? req.body.swimmers : [];
+
+  const cleanParentName = String(parentPayload && parentPayload.name ? parentPayload.name : "").trim();
+  const cleanParentEmail = String(parentPayload && parentPayload.email ? parentPayload.email : "").trim().toLowerCase();
+  const cleanParentPassword = String(parentPayload && parentPayload.password ? parentPayload.password : "");
+  const cleanParentGender = String(parentPayload && parentPayload.gender ? parentPayload.gender : "").trim().toLowerCase();
+  const cleanParentDob = normalizeDateOnly(parentPayload && parentPayload.date_of_birth ? parentPayload.date_of_birth : parentPayload && parentPayload.dateOfBirth ? parentPayload.dateOfBirth : null);
+  const cleanParentAddress = String(parentPayload && parentPayload.address ? parentPayload.address : "").trim();
+
+  const isParentSignup =
+    accountType === "parent" ||
+    (Array.isArray(swimmerPayloads) && swimmerPayloads.length > 0);
+
+  if (isParentSignup) {
+    if (
+      !cleanParentName ||
+      !cleanParentEmail ||
+      !cleanParentPassword ||
+      !cleanParentAddress
+    ) {
+      return res.status(400).json({
+        message:
+          "parent name, email, password, and address are required",
+      });
+    }
+
+    if (cleanParentPassword.length < 8) {
+      return res
+        .status(400)
+        .json({ message: "Parent password must be at least 8 characters" });
+    }
+
+    if (!Array.isArray(swimmerPayloads) || swimmerPayloads.length === 0) {
+      return res.status(400).json({
+        message: "Add at least one swimmer profile",
+      });
+    }
+
+    const normalizedSwimmers = swimmerPayloads.map((swimmer, index) => ({
+      name: String(swimmer && swimmer.name ? swimmer.name : "").trim(),
+      email: String(swimmer && swimmer.email ? swimmer.email : "").trim().toLowerCase(),
+      password: String(swimmer && swimmer.password ? swimmer.password : ""),
+      gender: String(swimmer && swimmer.gender ? swimmer.gender : "").trim().toLowerCase(),
+      date_of_birth: normalizeDateOnly(swimmer && swimmer.date_of_birth ? swimmer.date_of_birth : swimmer && swimmer.dateOfBirth ? swimmer.dateOfBirth : null),
+      address: String(swimmer && swimmer.address ? swimmer.address : cleanParentAddress).trim(),
+      relationship: String(swimmer && swimmer.relationship ? swimmer.relationship : "child").trim() || "child",
+      is_primary: index === 0 ? 1 : 0,
+    }));
+
+    const invalidSwimmer = normalizedSwimmers.find(
+      (swimmer) =>
+        !swimmer.name ||
+        !swimmer.email ||
+        !swimmer.password ||
+        !swimmer.gender ||
+        !swimmer.date_of_birth ||
+        !swimmer.address,
+    );
+
+    if (invalidSwimmer) {
+      return res.status(400).json({
+        message:
+          "each swimmer needs a name, email, password, gender, date of birth, and address",
+      });
+    }
+
+    for (const swimmer of normalizedSwimmers) {
+      if (swimmer.password.length < 8) {
+        return res.status(400).json({
+          message: "Each swimmer password must be at least 8 characters",
+        });
+      }
+    }
+
+    const uniqueEmails = new Set([cleanParentEmail]);
+    for (const swimmer of normalizedSwimmers) {
+      if (uniqueEmails.has(swimmer.email)) {
+        return res.status(400).json({
+          message: "Parent and swimmer emails must be unique within the signup",
+        });
+      }
+      uniqueEmails.add(swimmer.email);
+    }
+
+    const connection = await pool.getConnection();
+
+    try {
+      await connection.beginTransaction();
+
+      const parentPasswordHash = await bcrypt.hash(cleanParentPassword, 10);
+      const [parentResult] = await connection.query(
+        "INSERT INTO users (name, email, password_hash, role, gender, date_of_birth, address) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        [
+          cleanParentName,
+          cleanParentEmail,
+          parentPasswordHash,
+          "parent",
+          cleanParentGender || null,
+          cleanParentDob,
+          cleanParentAddress,
+        ],
+      );
+
+      await connection.query(
+        "INSERT INTO parents (user_id, phone, emergency_contact) VALUES (?, NULL, NULL)",
+        [parentResult.insertId],
+      );
+
+      const [createdParentRows] = await connection.query(
+        "SELECT id FROM parents WHERE user_id = ? LIMIT 1",
+        [parentResult.insertId],
+      );
+
+      const parentId = createdParentRows.length ? createdParentRows[0].id : null;
+      if (!parentId) {
+        throw new Error("Failed to create parent profile");
+      }
+
+      for (const swimmer of normalizedSwimmers) {
+        const swimmerPasswordHash = await bcrypt.hash(swimmer.password, 10);
+        const [swimmerResult] = await connection.query(
+          "INSERT INTO users (name, email, password_hash, role, gender, date_of_birth, address) VALUES (?, ?, ?, ?, ?, ?, ?)",
+          [
+            swimmer.name,
+            swimmer.email,
+            swimmerPasswordHash,
+            "swimmer",
+            swimmer.gender,
+            swimmer.date_of_birth,
+            swimmer.address,
+          ],
+        );
+
+        const [swimmerRows] = await connection.query(
+          "SELECT id FROM swimmers WHERE user_id = ? LIMIT 1",
+          [swimmerResult.insertId],
+        );
+
+        if (!swimmerRows.length) {
+          await connection.query(
+            "INSERT INTO swimmers (user_id, date_of_birth, gender, skill_level) VALUES (?, ?, ?, NULL)",
+            [swimmerResult.insertId, swimmer.date_of_birth, swimmer.gender],
+          );
+        }
+
+        const [linkedSwimmerRows] = await connection.query(
+          "SELECT id FROM swimmers WHERE user_id = ? LIMIT 1",
+          [swimmerResult.insertId],
+        );
+
+        if (!linkedSwimmerRows.length) {
+          throw new Error("Failed to create swimmer profile");
+        }
+
+        await connection.query(
+          `INSERT INTO parent_swimmers (parent_id, swimmer_id, relationship, is_primary)
+           VALUES (?, ?, ?, ?)
+           ON DUPLICATE KEY UPDATE relationship = VALUES(relationship), is_primary = VALUES(is_primary)` ,
+          [
+            parentId,
+            linkedSwimmerRows[0].id,
+            swimmer.relationship,
+            swimmer.is_primary,
+          ],
+        );
+
+        const [defaultGroupRows] = await connection.query(
+          "SELECT id FROM practice_groups WHERE group_name = ? LIMIT 1",
+          ["Junior 1"],
+        );
+
+        if (defaultGroupRows.length) {
+          await connection.query(
+            `INSERT INTO swimmer_groups (swimmer_id, group_id)
+             VALUES (?, ?)
+             ON DUPLICATE KEY UPDATE group_id = VALUES(group_id)` ,
+            [linkedSwimmerRows[0].id, defaultGroupRows[0].id],
+          );
+        }
+      }
+
+      await connection.commit();
+
+      return res.status(201).json({ message: "Family account created successfully" });
+    } catch (error) {
+      await connection.rollback();
+
+      if (error.code === "ER_DUP_ENTRY") {
+        return res.status(409).json({ message: "Email already exists" });
+      }
+
+      return res
+        .status(500)
+        .json({ message: "Signup failed", error: error.message });
+    } finally {
+      connection.release();
+    }
+  }
+
   const { name, email, password, role, gender, date_of_birth, address } =
     req.body;
 
@@ -4555,14 +4756,14 @@ app.get("/api/meets/:id", authenticate, async (req, res) => {
     // session-level meet_days from event_name session prefixes like "[Friday PM] ..."
     let returnedDays = Array.isArray(days) ? days : [];
     try {
-      if (returnedDays.length <= 1 && Array.isArray(events) && events.length) {
+      if (Array.isArray(events) && events.length) {
         const sessionLabels = new Map();
         events.forEach((ev) => {
           const m = String(ev.event_name || "").match(/^\[([^\]]+)\]/);
           if (m && m[1]) sessionLabels.set(m[1].trim(), true);
         });
 
-        if (sessionLabels.size > 0) {
+        if (sessionLabels.size > returnedDays.length) {
           const baseDate =
             meetRows[0] && (meetRows[0].start_date || meetRows[0].meet_date)
               ? meetRows[0].start_date || meetRows[0].meet_date

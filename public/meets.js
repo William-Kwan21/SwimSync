@@ -124,6 +124,105 @@ function formatDate(value) {
   });
 }
 
+function addDaysToDateOnly(value, days) {
+  const raw = String(value || "").slice(0, 10);
+  if (!raw) return null;
+  const date = new Date(`${raw}T00:00:00`);
+  if (Number.isNaN(date.getTime())) return null;
+  date.setDate(date.getDate() + Number(days || 0));
+  return date.toISOString().slice(0, 10);
+}
+
+function getDayOffsetFromDate(dateOnly, dayName) {
+  const dayIndexMap = {
+    sunday: 0,
+    monday: 1,
+    tuesday: 2,
+    wednesday: 3,
+    thursday: 4,
+    friday: 5,
+    saturday: 6,
+  };
+
+  const target = dayIndexMap[String(dayName || "").trim().toLowerCase()];
+  if (target == null) return 0;
+
+  const raw = String(dateOnly || "").slice(0, 10);
+  if (!raw) return 0;
+
+  const date = new Date(`${raw}T00:00:00`);
+  if (Number.isNaN(date.getTime())) return 0;
+
+  return (target - date.getDay() + 7) % 7;
+}
+
+function compareSessionLabels(a, b) {
+  const dayOrder = { friday: 0, saturday: 1, sunday: 2 };
+  const periodOrder = { am: 0, mid: 1, pm: 2 };
+
+  const rank = (label) => {
+    const parts = String(label || "")
+      .replace(/\s+/g, " ")
+      .trim()
+      .split(" ");
+    const day = String(parts[0] || "").toLowerCase();
+    const period = String(parts[1] || "").toLowerCase();
+    return [dayOrder[day] ?? 99, periodOrder[period] ?? 99, String(label || "")];
+  };
+
+  const left = rank(a);
+  const right = rank(b);
+  if (left[0] !== right[0]) return left[0] - right[0];
+  if (left[1] !== right[1]) return left[1] - right[1];
+  return left[2].localeCompare(right[2]);
+}
+
+function buildSessionRows(detail) {
+  const meet = detail && detail.meet ? detail.meet : {};
+  const baseDate = meet.start_date || meet.meet_date || null;
+  const rows = [];
+  const seen = new Set();
+
+  const addRow = (row) => {
+    const meetDay = String(row && row.meet_day ? row.meet_day : "").slice(0, 10);
+    const sessionLabel = String(row && row.session_label ? row.session_label : "").trim();
+    if (!meetDay || !sessionLabel) return;
+    const key = `${meetDay}|${sessionLabel}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    rows.push({
+      meet_day: meetDay,
+      session_label: sessionLabel,
+      age_group: row.age_group || "",
+      gender: row.gender || "",
+      warmup_time: row.warmup_time || "",
+    });
+  };
+
+  (detail && Array.isArray(detail.days) ? detail.days : []).forEach(addRow);
+
+  (detail && Array.isArray(detail.events) ? detail.events : []).forEach((event) => {
+    const parsed = parseEventNameWithSession(event.event_name || "");
+    const sessionLabel = String(parsed.sessionLabel || "").trim();
+    if (!sessionLabel) return;
+    const dayName = sessionLabel.split(/\s+/)[0];
+    const meetDay = baseDate ? addDaysToDateOnly(baseDate, getDayOffsetFromDate(baseDate, dayName)) : null;
+    addRow({
+      meet_day: meetDay,
+      session_label: sessionLabel,
+      age_group: event.age_group || "",
+      gender: event.gender || "",
+      warmup_time: "",
+    });
+  });
+
+  return rows.sort((a, b) => {
+    const dateCmp = String(a.meet_day).localeCompare(String(b.meet_day));
+    if (dateCmp !== 0) return dateCmp;
+    return compareSessionLabels(a.session_label, b.session_label);
+  });
+}
+
 function showState(el, message, type) {
   el.textContent = message;
   el.classList.remove("hidden", "error", "info");
@@ -542,48 +641,55 @@ function renderPublicEventsTable(detail) {
   }
 
   const rows = [];
-  let lastSessionLabel = "";
+  const eventsBySession = new Map();
 
-  events.forEach((event, index) => {
+  events.forEach((event) => {
     const parsed = parseEventNameWithSession(event.event_name || "");
-    const eventTitle = parsed.eventTitle || String(event.event_name || "");
-    const sessionLabel = parsed.sessionLabel;
+    const sessionLabel = parsed.sessionLabel || "Unscheduled";
+    if (!eventsBySession.has(sessionLabel)) {
+      eventsBySession.set(sessionLabel, []);
+    }
+    eventsBySession.get(sessionLabel).push(event);
+  });
 
-    if (sessionLabel && sessionLabel !== lastSessionLabel) {
+  Array.from(eventsBySession.entries())
+    .sort((a, b) => compareSessionLabels(a[0], b[0]))
+    .forEach(([sessionLabel, sessionEvents]) => {
       rows.push(
         `<tr class="date-separator-row"><td colspan="4">${escHtml(sessionLabel)}</td></tr>`,
       );
-      lastSessionLabel = sessionLabel;
-    }
 
-    const eventNumberMatch = String(eventTitle || "").match(
-      /\bEvent\s+(\d{1,3})\b/i,
-    );
-    const eventNumber = eventNumberMatch
-      ? eventNumberMatch[1]
-      : String(index + 1);
-    const cleanEventName = String(eventTitle || "-")
-      .replace(/\bEvent\s+\d{1,3}\b\s*/i, "")
-      .trim();
-    const displayEventName = cleanEventName;
+      sessionEvents.forEach((event, index) => {
+        const parsed = parseEventNameWithSession(event.event_name || "");
+        const eventTitle = parsed.eventTitle || String(event.event_name || "");
 
-    const standardText = event.qualifying_time_text || "NT";
-    const entryState = "OPEN";
-    const entryClass = "event-entry-in";
+        const eventNumberMatch = String(eventTitle || "").match(
+          /\bEvent\s+(\d{1,3})\b/i,
+        );
+        const eventNumber = eventNumberMatch
+          ? eventNumberMatch[1]
+          : String(index + 1);
+        const cleanEventName = String(eventTitle || "-")
+          .replace(/\bEvent\s+\d{1,3}\b\s*/i, "")
+          .trim();
+        const displayEventName = cleanEventName;
 
-    // Use database age_group, or extract from cleaned event_name as fallback
-    const ageGroup =
-      event.age_group || extractAgeGroupFromEventName(cleanEventName);
-    const tagBits = [ageGroup || ""].filter(Boolean);
+        const standardText = event.qualifying_time_text || "NT";
+        const entryState = "OPEN";
+        const entryClass = "event-entry-in";
 
-    const metaBits = [
-      event.distance_meters ? `${event.distance_meters}m` : "",
-      event.stroke || "",
-    ]
-      .filter(Boolean)
-      .join(" ");
+        const ageGroup =
+          event.age_group || extractAgeGroupFromEventName(cleanEventName);
+        const tagBits = [ageGroup || ""].filter(Boolean);
 
-    rows.push(`
+        const metaBits = [
+          event.distance_meters ? `${event.distance_meters}m` : "",
+          event.stroke || "",
+        ]
+          .filter(Boolean)
+          .join(" ");
+
+        rows.push(`
             <tr class="meet-event-row">
               <td>
                 <span class="event-entry-pill ${entryClass}">${entryState}</span>
@@ -610,7 +716,8 @@ function renderPublicEventsTable(detail) {
               </td>
             </tr>
           `);
-  });
+      });
+    });
 
   meetPublicEventsTbody.innerHTML = rows.join("");
 }
@@ -689,7 +796,7 @@ function renderDeclarationTable(detail) {
     return;
   }
 
-  const dayValues = (detail.days || []).map((row) => ({
+  const dayValues = buildSessionRows(detail).map((row) => ({
     meet_day: String(row.meet_day).slice(0, 10),
     session_label: String(row.session_label || "").trim(),
     age_group: row.age_group || "",
@@ -852,7 +959,7 @@ function renderCoachEntryTable(detail) {
     });
 
     const sessionSections = Array.from(eventsBySession.entries())
-      .sort((a, b) => String(a[0]).localeCompare(String(b[0])))
+      .sort((a, b) => compareSessionLabels(a[0], b[0]))
       .map(([sessionLabel, sessionEvents]) => {
         const eventRows = sessionEvents
           .map((event) => {
@@ -1009,14 +1116,20 @@ async function loadMeetDetail(meetId) {
     selectedMeetId = meetId;
     selectedMeetDetail = detail;
 
+    const sessionRows = buildSessionRows(detail);
+    const displayDetail = {
+      ...detail,
+      days: sessionRows,
+    };
+
     meetDetailTitle.textContent = detail.meet.meet_name;
     meetDetailMeta.textContent = `${formatDate(detail.meet.meet_date)} · ${detail.meet.location || "Location TBD"}${detail.meet.host_team ? ` · ${detail.meet.host_team}` : ""}`;
-    renderMeetOverview(detail);
-    renderImportantInfo(detail);
-    renderMeetEditForm(detail);
-    renderMeetDays(detail.days || []);
+    renderMeetOverview(displayDetail);
+    renderImportantInfo(displayDetail);
+    renderMeetEditForm(displayDetail);
+    renderMeetDays(sessionRows);
     renderPublicEventsTable(detail);
-    renderDeclarationTable(detail);
+    renderDeclarationTable(displayDetail);
     renderCoachEntryTable(detail);
 
     show(meetDetailCard);
@@ -1053,6 +1166,7 @@ async function loadTimes() {
             <td>${escHtml(row.swimmer_name)}</td>
             <td>${escHtml(row.stroke)}</td>
             <td>${Number(row.distance_meters) || 0}m</td>
+            <td>${escHtml(row.course || "SCY")}</td>
             <td>${escHtml(row.best_time_text || row.best_time_seconds)}</td>
             <td>${formatDate(row.achieved_on)}</td>
           </tr>

@@ -13,48 +13,36 @@
     <section class="auth-card">
       <div class="auth-brand">
         <p class="eyebrow">SwimSync</p>
-        <h1>Create your account</h1>
-        <p class="auth-copy">Sign up as a swimmer or parent. Your account is saved directly to the SwimSync database.</p>
+        <h1>Create your family account</h1>
+        <p class="auth-copy">Create the parent login once, then add one or more swimmer profiles that stay linked to that parent account. Each swimmer gets their own SwimSync login and remains connected to the parent family account.</p>
       </div>
 
       <form id="signup-form" class="auth-form" autocomplete="off">
-        <div class="form-row">
-          <label for="signup-name">Full name</label>
-          <input id="signup-name" type="text" placeholder="Your full name" required />
+        <div class="form-row form-row-full" style="margin-bottom: 0.25rem;">
+          <strong>Parent account</strong>
         </div>
         <div class="form-row">
-          <label for="signup-email">Email</label>
-          <input id="signup-email" type="email" placeholder="name@example.com" required />
+          <label for="signup-parent-name">Parent full name</label>
+          <input id="signup-parent-name" type="text" placeholder="Parent full name" required />
         </div>
         <div class="form-row">
-          <label for="signup-password">Password</label>
-          <input id="signup-password" type="password" placeholder="At least 8 characters" minlength="8" required />
+          <label for="signup-parent-email">Parent email</label>
+          <input id="signup-parent-email" type="email" placeholder="parent@example.com" required />
         </div>
         <div class="form-row">
-          <label for="signup-role">Role</label>
-          <select id="signup-role" required>
-            <option value="swimmer">Swimmer</option>
-            <option value="parent">Parent</option>
-          </select>
+          <label for="signup-parent-password">Parent password</label>
+          <input id="signup-parent-password" type="password" placeholder="At least 8 characters" minlength="8" required />
         </div>
         <div class="form-row">
-          <label for="signup-gender">Gender</label>
-          <select id="signup-gender" required>
-            <option value="">Select gender</option>
-            <option value="male">Male</option>
-            <option value="female">Female</option>
-            <option value="non-binary">Non-binary</option>
-            <option value="other">Other</option>
-          </select>
+          <label for="signup-parent-address">Parent address</label>
+          <input id="signup-parent-address" type="text" placeholder="Street, City, State" required />
         </div>
-        <div class="form-row">
-          <label for="signup-dob">Date of Birth</label>
-          <input id="signup-dob" type="date" required />
+
+        <div class="form-row form-row-full" style="margin-top: 0.5rem; margin-bottom: 0.25rem; display:flex; align-items:center; justify-content:space-between; gap:1rem;">
+          <strong>Swimmer profiles</strong>
+          <button class="btn btn-secondary" id="btn-add-swimmer" type="button">Add another swimmer</button>
         </div>
-        <div class="form-row">
-          <label for="signup-address">Address</label>
-          <input id="signup-address" type="text" placeholder="Street, City, State" required />
-        </div>
+        <div id="signup-swimmers"></div>
 
         <div id="signup-error" class="state-msg error hidden"></div>
         <div id="signup-success" class="state-msg hidden"></div>
