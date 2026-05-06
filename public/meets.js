@@ -1508,25 +1508,36 @@ meetImportForm.addEventListener("submit", async (event) => {
     let data;
 
     if (isPdfFile(filePayload.file)) {
-      stage = "extracting PDF text in browser";
-      showState(meetImportStatus, "Extracting text from PDF...", "info");
-
-      let extractedText;
-      try {
-        extractedText = await extractPdfTextInBrowser(filePayload.file);
-      } catch (error) {
-        throw new Error(`PDF extraction failed: ${error.message}`);
-      }
-
-      stage = "sending extracted text to server";
-      showState(meetImportStatus, "Importing extracted PDF text...", "info");
-      res = await uploadTextMultipart("/api/meets/import", {
-        content: extractedText,
-        file_type: "text/plain",
-        file_name: filePayload.file_name || "meet-import.txt",
-        encoding: "utf8",
-      });
+      stage = "uploading pdf to server";
+      showState(meetImportStatus, "Uploading PDF to server...", "info");
+      res = await uploadFileMultipart("/api/meets/import", filePayload);
       data = await safeJson(res);
+
+      if (!res.ok && shouldRetryPdfImport(res, data, filePayload)) {
+        stage = "extracting PDF text in browser";
+        showState(
+          meetImportStatus,
+          "Server parse failed, extracting PDF text in browser...",
+          "info",
+        );
+
+        let extractedText;
+        try {
+          extractedText = await extractPdfTextInBrowser(filePayload.file);
+        } catch (error) {
+          throw new Error(`PDF extraction failed: ${error.message}`);
+        }
+
+        stage = "sending extracted text to server";
+        showState(meetImportStatus, "Importing extracted PDF text...", "info");
+        res = await uploadTextMultipart("/api/meets/import", {
+          content: extractedText,
+          file_type: "text/plain",
+          file_name: filePayload.file_name || "meet-import.txt",
+          encoding: "utf8",
+        });
+        data = await safeJson(res);
+      }
     } else {
       stage = "uploading meet file";
       showState(meetImportStatus, "Uploading meet file...", "info");
