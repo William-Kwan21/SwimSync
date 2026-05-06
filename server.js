@@ -1999,10 +1999,7 @@ function buildPdfSessionHeadingPattern(sessionLabel) {
     periodPattern = "(?:MID(?:[- ]?DAY)?|MIDDAY)";
   }
 
-  return new RegExp(
-    `${dayPattern}\\s+${periodPattern}(?:\\s+Session)?`,
-    "i",
-  );
+  return new RegExp(`${dayPattern}\\s+${periodPattern}(?:\\s+Session)?`, "i");
 }
 
 function parseInviteSessionEventsFromPdfText(content, options = {}) {
@@ -2026,43 +2023,77 @@ function parseInviteSessionEventsFromPdfText(content, options = {}) {
     return { days: [], events: [] };
   }
 
+  const likelyTableHeader = (markerIndex, markerText) => {
+    const lookAhead = text.slice(markerIndex, markerIndex + 700);
+    const afterHeading = text.slice(
+      markerIndex + String(markerText || "").length,
+      markerIndex + String(markerText || "").length + 700,
+    );
+
+    if (/\bGirls\s+Event\s+Boys\b/i.test(lookAhead)) return true;
+    if (/\bWarm-?up\b/i.test(lookAhead) && /\bStart\b/i.test(lookAhead)) {
+      return true;
+    }
+
+    // Event tables contain lots of low 1-3 digit event numbers close together.
+    const numberHits = afterHeading.match(/\b\d{1,3}\b/g);
+    return Array.isArray(numberHits) && numberHits.length >= 8;
+  };
+
   const markers = [];
   for (const session of sessions) {
     const pattern = buildPdfSessionHeadingPattern(session.session_label);
     if (!pattern) {
       continue;
     }
-    const match = text.match(pattern);
-    if (!match || typeof match.index !== "number") {
-      const foundIndex = text.search(pattern);
-      if (foundIndex < 0) {
-        continue;
-      }
-      markers.push({
-        index: foundIndex,
-        label: session.session_label,
-        matchText: text.slice(foundIndex, foundIndex + match[0].length),
+
+    // Find all occurrences; the first is usually in the "SESSIONS" summary,
+    // while later ones are the actual table headings we need.
+    const globalPattern = new RegExp(pattern.source, "gi");
+    const candidates = [];
+    let match;
+    while ((match = globalPattern.exec(text)) !== null) {
+      candidates.push({
+        index: match.index,
+        matchText: match[0],
       });
+    }
+
+    if (!candidates.length) {
       continue;
     }
+
+    const tableCandidates = candidates.filter((candidate) =>
+      likelyTableHeader(candidate.index, candidate.matchText),
+    );
+    const picked =
+      tableCandidates.length > 0
+        ? tableCandidates[tableCandidates.length - 1]
+        : candidates[candidates.length - 1];
+
     markers.push({
-      index: match.index,
+      index: picked.index,
       label: session.session_label,
-      matchText: match[0],
+      matchText: picked.matchText,
     });
   }
 
   markers.sort((a, b) => a.index - b.index);
 
-  const events = [];
-  for (let i = 0; i < sessions.length; i += 1) {
-    const session = sessions[i];
-    const marker = markers.find((entry) => entry.label === session.session_label);
-    if (!marker) {
-      continue;
-    }
+  if (!markers.length) {
+    return {
+      days: normalizeMeetDayEntries(sessions, meetDate),
+      events: [],
+    };
+  }
 
-    const nextMarker = markers.find((entry) => entry.index > marker.index);
+  const events = [];
+  for (let i = 0; i < markers.length; i += 1) {
+    const marker = markers[i];
+    const session = sessions.find((entry) => entry.session_label === marker.label);
+    if (!session) continue;
+
+    const nextMarker = i + 1 < markers.length ? markers[i + 1] : null;
     const blockStart = marker.index + marker.matchText.length;
     const blockEnd = nextMarker ? nextMarker.index : text.length;
     const blockText = text.slice(blockStart, blockEnd);
@@ -2070,18 +2101,21 @@ function parseInviteSessionEventsFromPdfText(content, options = {}) {
       session.session_label || session.age_group || "",
     );
 
-    const blockEvents = parseInviteEventRowsFromBlock(blockText).map((event) => ({
-      ...event,
-      session_label: session.session_label,
-      meet_day: session.meet_day,
-      course: event.course || "SCY",
-      age_group: event.age_group || session.age_group || sessionAgeGroup || null,
-      gender: event.gender || null,
-      event_name: limitTextLength(
-        `[${session.session_label}] ${event.event_name}`,
-        500,
-      ),
-    }));
+    const blockEvents = parseInviteEventRowsFromBlock(blockText).map(
+      (event) => ({
+        ...event,
+        session_label: session.session_label,
+        meet_day: session.meet_day,
+        course: event.course || "SCY",
+        age_group:
+          event.age_group || session.age_group || sessionAgeGroup || null,
+        gender: event.gender || null,
+        event_name: limitTextLength(
+          `[${session.session_label}] ${event.event_name}`,
+          500,
+        ),
+      }),
+    );
 
     events.push(...blockEvents);
   }
