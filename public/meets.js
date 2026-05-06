@@ -1407,11 +1407,25 @@ async function extractPdfTextInBrowser(file) {
   for (let pageNum = 1; pageNum <= doc.numPages; pageNum += 1) {
     const page = await doc.getPage(pageNum);
     const textContent = await page.getTextContent();
-    const pageText = (textContent.items || [])
-      .map((item) => (item && item.str ? String(item.str) : ""))
-      .join(" ")
-      .replace(/\s+/g, " ")
-      .trim();
+    const lines = [];
+    let lineBuffer = "";
+
+    (textContent.items || []).forEach((item) => {
+      const part = item && item.str ? String(item.str).replace(/\s+/g, " ").trim() : "";
+      if (part) {
+        lineBuffer = lineBuffer ? `${lineBuffer} ${part}` : part;
+      }
+      if (item && item.hasEOL && lineBuffer) {
+        lines.push(lineBuffer.trim());
+        lineBuffer = "";
+      }
+    });
+
+    if (lineBuffer) {
+      lines.push(lineBuffer.trim());
+    }
+
+    const pageText = lines.join("\n").trim();
 
     if (pageText) {
       chunks.push(pageText);
@@ -1480,6 +1494,10 @@ function shouldRetryPdfImport(response, responseData, filePayload) {
     return true;
   }
 
+  if (response.status === 504) {
+    return true;
+  }
+
   const message = String(
     responseData && responseData.message ? responseData.message : "",
   )
@@ -1492,7 +1510,8 @@ function shouldRetryPdfImport(response, responseData, filePayload) {
     message.includes("unable to read text from pdf") ||
     message.includes("pdf support requires pdf-parse") ||
     message.includes("meet file content is empty") ||
-    message.includes("content is required")
+    message.includes("content is required") ||
+    message.includes("gateway time-out")
   );
 }
 

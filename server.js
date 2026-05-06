@@ -1452,36 +1452,6 @@ function parseInviteEventRowsFromBlock(blockText) {
   const rawText = String(blockText || "")
     .replace(/\r\n/g, "\n")
     .replace(/\r/g, "\n");
-  const normalized = rawText
-    .replace(/\bGirls\s+Event\s+Boys\b/gi, " ")
-    .replace(/\bGirls\s+Event\b|\bBoys\b/gi, " ")
-    .replace(/\bwarm[- ]?up\s*:?.*$/gim, " ")
-    .replace(/\bstart\s*:?\s*\d{1,2}:\d{2}\s*(am|pm).*$/gim, " ")
-    .replace(/\b15\s*minute\s*break\b/gi, " ")
-    .replace(
-      /\b\d{4,}\s*(?:meet|session|times?\s+may\s+be|limited|provided|heats?).*$/gim,
-      " ",
-    )
-    .replace(/\*+/g, " ")
-    .replace(/[\u2022•·]/g, " ")
-    .replace(/[–—]/g, "-")
-    .replace(/\s+/g, " ")
-    .trim();
-
-  const tokens = normalized.split(" ").filter(Boolean);
-  const distanceSet = new Set([
-    "25",
-    "50",
-    "100",
-    "200",
-    "400",
-    "500",
-    "800",
-    "1000",
-    "1500",
-  ]);
-  const isStandaloneNumber = (token) => /^\d{1,3}$/.test(token);
-  const isDistance = (token) => distanceSet.has(token);
   const events = [];
   const seen = new Set();
 
@@ -1580,43 +1550,6 @@ function parseInviteEventRowsFromBlock(blockText) {
       eventNameParts.length > 0
         ? eventNameParts.join(" ")
         : descriptorForParsing;
-
-    console.log("🔍 Built event:", {
-      descriptor: descriptorForParsing.slice(0, 60),
-      ageGroup,
-      distanceMeters,
-      stroke,
-      genderCapitalized,
-      eventNameBuilt,
-    });
-
-    events.push({
-      event_name: limitTextLength(eventNameBuilt, 150),
-      stroke: stroke ? normalizeStroke(stroke) : null,
-      distance_meters: Number.isFinite(distanceMeters) ? distanceMeters : null,
-      course: "SCY", // Default to Short Course Yards
-      age_group: ageGroup,
-      gender: normalizedGender,
-      qualifying_time_seconds: null,
-      qualifying_time_text: null,
-      is_selected: events.length < 4,
-    });
-  };
-
-  // First pass: parse line-oriented rows from table text.
-  const lines = rawText
-    .split("\n")
-    .map((line) =>
-      String(line || "")
-        .replace(/\*+/g, " ")
-        .replace(/[\u2022•·]/g, " ")
-        .replace(/[–—]/g, "-")
-        .replace(/\s+/g, " ")
-        .trim(),
-    )
-    .filter(Boolean);
-
-  for (const line of lines) {
     if (
       /\b(girls\s+event\s+boys|order\s+of\s+events|session\s*\d+|warm[- ]?up|start:)\b/i.test(
         line,
