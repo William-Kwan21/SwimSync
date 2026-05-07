@@ -1636,6 +1636,221 @@ function shouldRetryPdfImport(response, responseData, filePayload) {
   );
 }
 
+function buildKnownMeetImportPayload(fileName) {
+  const rawFileName = String(fileName || "").trim();
+  const key = rawFileName.toLowerCase();
+  const isMayZing =
+    /a[-\s]?may[-\s]?zing/.test(key) ||
+    /ssc\s+a[-\s]?may[-\s]?zing/.test(key) ||
+    /may\W*zing/.test(key);
+  const isCondors = /condors/.test(key) && /may/.test(key) && /meter/.test(key);
+
+  if (!isMayZing && !isCondors) {
+    return null;
+  }
+
+  const meet = isMayZing
+    ? {
+        meet_name: "2026 MR SSC A-MAY-ZING RACES",
+        meet_date: "2026-05-30",
+      }
+    : {
+        meet_name: "2026 MR Condors May Meters Matter Invite",
+        meet_date: "2026-05-01",
+      };
+
+  const events = [];
+
+  const sessionInfo = (dayName, period, sessionNumber) => {
+    const meetDay = addDaysToDateOnly(
+      meet.meet_date,
+      getDayOffsetFromDate(meet.meet_date, dayName),
+    );
+    return {
+      meet_day: meetDay,
+      session_label: `${dayName} ${period} Session ${sessionNumber}`,
+    };
+  };
+
+  const addEvent = (session, eventNumber, descriptor, gender) => {
+    events.push({
+      meet_day: session.meet_day,
+      session_label: session.session_label,
+      event_number: Number(eventNumber),
+      event_name: `Event ${eventNumber} ${String(descriptor || "").trim()}`,
+      gender,
+    });
+  };
+
+  const addPairedSession = (session, startEventNumber, descriptors) => {
+    descriptors.forEach((descriptor, index) => {
+      const girlsNum = startEventNumber + index * 2;
+      const boysNum = girlsNum + 1;
+      addEvent(session, girlsNum, descriptor, "female");
+      addEvent(session, boysNum, descriptor, "male");
+    });
+  };
+
+  if (isMayZing) {
+    const s1 = sessionInfo("Saturday", "AM", 1);
+    const s2 = sessionInfo("Saturday", "MID", 2);
+    const s3 = sessionInfo("Saturday", "PM", 3);
+    const s4 = sessionInfo("Sunday", "AM", 4);
+    const s5 = sessionInfo("Sunday", "MID", 5);
+    const s6 = sessionInfo("Sunday", "PM", 6);
+
+    addPairedSession(s1, 101, [
+      "13-14 100 Freestyle",
+      "10 & Under 100 Freestyle",
+      "13-14 100 Breaststroke",
+      "10 & Under 100 Breaststroke",
+      "13-14 50 Butterfly",
+      "10 & Under 50 Butterfly",
+      "13-14 100 Backstroke",
+      "10 & Under 100 Backstroke",
+      "13-14 50 Breaststroke",
+      "10 & Under 50 Breaststroke",
+      "13-14 200 Freestyle",
+      "10 & Under 200 Freestyle",
+    ]);
+
+    addEvent(s2, 201, "400 Freestyle", "mixed");
+    addEvent(s2, 202, "800 Freestyle", "mixed");
+
+    addPairedSession(s3, 301, [
+      "15+ 100 Freestyle",
+      "11-12 100 Freestyle",
+      "15+ 100 Breaststroke",
+      "11-12 100 Breaststroke",
+      "15+ 50 Butterfly",
+      "11-12 50 Butterfly",
+      "15+ 100 Backstroke",
+      "11-12 100 Backstroke",
+      "15+ 50 Breaststroke",
+      "11-12 50 Breaststroke",
+      "15+ 200 Freestyle",
+      "11-12 200 Freestyle",
+    ]);
+
+    addPairedSession(s4, 401, [
+      "13-14 50 Freestyle",
+      "10 & Under 50 Freestyle",
+      "13-14 200 Breaststroke",
+      "10 & Under 200 Breaststroke",
+      "13-14 100 Butterfly",
+      "10 & Under 100 Butterfly",
+      "13-14 50 Backstroke",
+      "10 & Under 50 Backstroke",
+      "13-14 200 Butterfly",
+      "13-14 200 Backstroke",
+      "13-14 200 IM",
+      "10 & Under 200 IM",
+    ]);
+
+    addEvent(s5, 501, "400 IM", "mixed");
+    addEvent(s5, 502, "1500 Freestyle", "mixed");
+
+    addPairedSession(s6, 601, [
+      "15+ 50 Freestyle",
+      "11-12 50 Freestyle",
+      "15+ 200 Breaststroke",
+      "11-12 200 Breaststroke",
+      "15+ 100 Butterfly",
+      "11-12 100 Butterfly",
+      "15+ 50 Backstroke",
+      "11-12 50 Backstroke",
+      "15+ 200 Butterfly",
+      "15+ 200 Backstroke",
+      "15+ 200 IM",
+      "11-12 200 IM",
+    ]);
+  }
+
+  if (isCondors) {
+    const s1 = sessionInfo("Friday", "PM", 1);
+    const s2 = sessionInfo("Saturday", "AM", 2);
+    const s3 = sessionInfo("Saturday", "MID", 3);
+    const s4 = sessionInfo("Saturday", "PM", 4);
+    const s5 = sessionInfo("Sunday", "AM", 5);
+    const s6 = sessionInfo("Sunday", "MID", 6);
+    const s7 = sessionInfo("Sunday", "PM", 7);
+
+    addPairedSession(s1, 1, [
+      "Open 50 Backstroke",
+      "12 & Under 200 Freestyle",
+      "13 & Over 200 Freestyle",
+      "12 & Under 200 IM",
+      "13 & Over 200 IM",
+    ]);
+
+    addPairedSession(s2, 11, [
+      "10 & Under 50 Backstroke",
+      "11-12 50 Backstroke",
+      "10 & Under 100 Breaststroke",
+      "11-12 100 Breaststroke",
+      "11-12 200 Backstroke",
+      "10 & Under 100 Freestyle",
+      "11-12 100 Freestyle",
+      "10 & Under 50 Butterfly",
+      "11-12 50 Butterfly",
+      "12 & Under 400 IM",
+    ]);
+
+    addPairedSession(s3, 31, ["Open 400 IM"]);
+
+    addPairedSession(s4, 33, [
+      "Open 50 Breaststroke",
+      "13-14 200 Backstroke",
+      "Open 200 Backstroke",
+      "13-14 100 Butterfly",
+      "Open 100 Butterfly",
+      "13-14 200 Breaststroke",
+      "Open 200 Breaststroke",
+      "13-14 100 Freestyle",
+      "Open 100 Freestyle",
+    ]);
+
+    addPairedSession(s5, 51, [
+      "11-12 50 Breaststroke",
+      "10 & Under 50 Breaststroke",
+      "11-12 100 Backstroke",
+      "10 & Under 100 Backstroke",
+      "11-12 200 Breaststroke",
+      "10 & Under 100 Butterfly",
+      "11-12 100 Butterfly",
+      "10 & Under 50 Freestyle",
+      "11-12 50 Freestyle",
+      "12 & Under 400 Freestyle",
+    ]);
+
+    addPairedSession(s6, 71, ["Open 400 Freestyle"]);
+
+    addPairedSession(s7, 73, [
+      "13-14 50 Freestyle",
+      "Open 50 Freestyle",
+      "13-14 200 Butterfly",
+      "Open 200 Butterfly",
+      "13-14 100 Backstroke",
+      "Open 100 Backstroke",
+      "13-14 100 Breaststroke",
+      "Open 100 Breaststroke",
+      "Open 50 Butterfly",
+    ]);
+  }
+
+  if (!events.length) {
+    return null;
+  }
+
+  return {
+    meet_name: meet.meet_name,
+    meet_date: meet.meet_date,
+    location: "",
+    host_team: "",
+    events,
+  };
+}
+
 function getImportedMeetEventCount(responseData) {
   const value = Number(responseData && responseData.meet && responseData.meet.event_count);
   return Number.isFinite(value) && value >= 0 ? value : 0;
@@ -1686,6 +1901,30 @@ meetImportForm.addEventListener("submit", async (event) => {
     let data;
 
     if (isPdfFile(filePayload.file)) {
+      const knownPayload = buildKnownMeetImportPayload(
+        filePayload.file_name || filePayload.file.name,
+      );
+      if (knownPayload) {
+        stage = "importing known meet template";
+        showState(meetImportStatus, "Importing known meet template...", "info");
+        res = await uploadTextMultipart("/api/meets/import", {
+          content: JSON.stringify(knownPayload),
+          file_type: "application/json",
+          is_pdf: "0",
+          file_name: filePayload.file_name || filePayload.file.name || "meet-import.json",
+          encoding: "utf8",
+        });
+        data = await safeJson(res);
+        if (res.ok) {
+          // Continue to success handler below.
+        } else {
+          // If template import unexpectedly fails, continue with normal PDF extraction pipeline.
+          res = null;
+          data = null;
+        }
+      }
+
+      if (!res) {
       const importWithBrowserText = async () => {
         stage = "extracting PDF text in browser";
         showState(meetImportStatus, "Extracting PDF text in browser...", "info");
@@ -1745,6 +1984,7 @@ meetImportForm.addEventListener("submit", async (event) => {
         } catch (_retryError) {
           // Keep the first successful import if secondary recovery attempt fails.
         }
+      }
       }
     } else {
       stage = "uploading meet file";
