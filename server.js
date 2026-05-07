@@ -1419,7 +1419,7 @@ function extractInviteSessionDaysFromText(content, meetDate) {
   };
 
   const headingRegex =
-    /\b(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)\s+(AM|PM|MID(?:-?DAY)?|AFTERNOON|MORNING|SESSION)(?:\s+Session)?\b/gi;
+    /\b(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)\s+(AM|PM|MID(?:[\s-]?DAY)?|AFTERNOON|MORNING|SESSION)(?:\s+Session)?\b/gi;
   let match;
   while ((match = headingRegex.exec(text)) !== null) {
     addMatch(match.index, match[1], match[2]);
@@ -1641,7 +1641,7 @@ function parseInviteSessionEventsFromText(content, options = {}) {
   // Now split the text into blocks using these 7 session markers
   const sessionMarkers = [];
   const headingRegex =
-    /\b(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)\s+(AM|PM|MID(?:-?DAY)?|AFTERNOON|MORNING|SESSION)(?:\s+Session)?\b/gi;
+    /\b(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)\s+(AM|PM|MID(?:[\s-]?DAY)?|AFTERNOON|MORNING|SESSION)(?:\s+Session)?\b/gi;
   let match;
   while ((match = headingRegex.exec(text)) !== null) {
     const dayName = match[1];
