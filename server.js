@@ -1449,9 +1449,6 @@ function extractWarmupTimeFromBlock(blockText) {
 }
 
 function parseInviteEventRowsFromBlock(blockText) {
-  const rawText = String(blockText || "")
-    .replace(/\r\n/g, "\n")
-    .replace(/\r/g, "\n");
   const events = [];
   const seen = new Set();
 
@@ -1465,7 +1462,6 @@ function parseInviteEventRowsFromBlock(blockText) {
       return;
     }
 
-    // Filter out metadata/instruction lines
     if (
       /\b(emailed|hy-tek|deck|entries|allowed|mail|payment|entry\s+fee|surcharge|original\s+email|contact|questions|information|officials|heats)\b/i.test(
         cleanDescriptor,
@@ -1480,16 +1476,10 @@ function parseInviteEventRowsFromBlock(blockText) {
     }
     seen.add(dedupeKey);
 
-    // Remove only duplicated leading gender words; keep age/range tokens intact.
     const descriptorNoGender = cleanDescriptor
       .replace(/^(?:girls?|boys?|women|men|female|male)\s+/i, "")
       .trim();
-
-    // Some OCR lines begin with "& Over" after removing gender. Treat that as Open.
-    const descriptorForParsing = descriptorNoGender.replace(
-      /^&\s*over\b/i,
-      "Open",
-    );
+    const descriptorForParsing = descriptorNoGender.replace(/^&\s*over\b/i, "Open");
 
     const distanceWithUnits = descriptorForParsing.match(
       /\b(\d{2,4})\s*(?:m|meter|meters|yd|yard|yards)\b/i,
@@ -1503,7 +1493,6 @@ function parseInviteEventRowsFromBlock(blockText) {
         ? Number(distanceNoUnits[1])
         : null;
 
-    // Ignore malformed OCR rows that do not contain a recognizable event distance.
     if (!Number.isFinite(distanceMeters)) {
       return;
     }
@@ -1530,26 +1519,51 @@ function parseInviteEventRowsFromBlock(blockText) {
       );
       if (ageHintMatch) {
         ageGroup =
-          extractAgeGroupFromText(ageHintMatch[1]) ||
-          String(ageHintMatch[1]).trim();
+          extractAgeGroupFromText(ageHintMatch[1]) || String(ageHintMatch[1]).trim();
       }
     }
+
     const normalizedGender = normalizeGender(gender);
     const genderCapitalized = normalizedGender
       ? normalizedGender.charAt(0).toUpperCase() + normalizedGender.slice(1)
       : "";
 
-    // Build event name: gender + age_group + distance + stroke
     const eventNameParts = [];
     if (genderCapitalized) eventNameParts.push(genderCapitalized);
     if (ageGroup) eventNameParts.push(ageGroup);
     if (distanceMeters) eventNameParts.push(`${distanceMeters}m`);
-    if (stroke)
-      eventNameParts.push(stroke.charAt(0).toUpperCase() + stroke.slice(1));
-    const eventNameBuilt =
-      eventNameParts.length > 0
-        ? eventNameParts.join(" ")
-        : descriptorForParsing;
+    if (stroke) eventNameParts.push(stroke.charAt(0).toUpperCase() + stroke.slice(1));
+
+    const eventNameBuilt = eventNameParts.length
+      ? eventNameParts.join(" ")
+      : descriptorForParsing;
+
+    events.push({
+      event_name: limitTextLength(eventNameBuilt, 150),
+      stroke: stroke ? normalizeStroke(stroke) : null,
+      distance_meters: Number.isFinite(distanceMeters) ? distanceMeters : null,
+      course: "SCY",
+      age_group: ageGroup,
+      gender: normalizedGender,
+      qualifying_time_seconds: null,
+      qualifying_time_text: null,
+      is_selected: events.length < 4,
+    });
+  };
+
+  const lines = rawText
+    .split("\n")
+    .map((line) =>
+      String(line || "")
+        .replace(/\*+/g, " ")
+        .replace(/[\u2022•·]/g, " ")
+        .replace(/[–—]/g, "-")
+        .replace(/\s+/g, " ")
+        .trim(),
+    )
+    .filter(Boolean);
+
+  for (const line of lines) {
     if (
       /\b(girls\s+event\s+boys|order\s+of\s+events|session\s*\d+|warm[- ]?up|start:)\b/i.test(
         line,
@@ -1582,62 +1596,6 @@ function parseInviteEventRowsFromBlock(blockText) {
         pushEvent(firstNum, descriptor, "male");
         pushEvent(secondNum, descriptor, "female");
       }
-      continue;
-    }
-
-  }
-
-  if (events.length) {
-    return events;
-  }
-
-  let index = 0;
-  while (index < tokens.length) {
-    if (!isStandaloneNumber(tokens[index])) {
-      index += 1;
-      continue;
-    }
-
-    const oddNumber = Number(tokens[index]);
-
-    // Find next non-distance number (the other gender's event number)
-    let nextNumberIndex = -1;
-    for (let i = index + 1; i < tokens.length; i++) {
-      if (isStandaloneNumber(tokens[i]) && !isDistance(tokens[i])) {
-        nextNumberIndex = i - index - 1;
-        break;
-      }
-    }
-
-    if (nextNumberIndex < 0) {
-      break;
-        eventNameParts.push(`${distanceMeters}m`);
-      if (strokeRaw)
-        eventNameParts.push(
-          strokeRaw.charAt(0).toUpperCase() + strokeRaw.slice(1),
-        );
-
-      const eventName = eventNameParts.length
-        ? eventNameParts.join(" ")
-        : String(line || "").trim();
-      const dedupeKey = `${eventName.toLowerCase()}|${normalizedGender || ""}|${ageGroup || ""}|${Number.isFinite(distanceMeters) ? distanceMeters : ""}`;
-      if (seen.has(dedupeKey)) {
-        continue;
-      }
-      seen.add(dedupeKey);
-
-      events.push({
-        event_name: limitTextLength(eventName, 150),
-        stroke: strokeRaw ? normalizeStroke(strokeRaw) : null,
-        distance_meters: Number.isFinite(distanceMeters)
-          ? distanceMeters
-          : null,
-        age_group: ageGroup,
-        gender: normalizedGender,
-        qualifying_time_seconds: null,
-        qualifying_time_text: null,
-        is_selected: events.length < 4,
-      });
     }
   }
 

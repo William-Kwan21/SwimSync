@@ -1441,6 +1441,49 @@ async function extractPdfTextInBrowser(file) {
   return text;
 }
 
+function compactMeetTextForImport(rawText) {
+  const text = String(rawText || "").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+  const lines = text
+    .split("\n")
+    .map((line) => String(line || "").replace(/\s+/g, " ").trim())
+    .filter(Boolean);
+
+  const keepers = [];
+  const seen = new Set();
+  const pushLine = (line) => {
+    const key = line.toLowerCase();
+    if (seen.has(key)) return;
+    seen.add(key);
+    keepers.push(line);
+  };
+
+  const headingRegex = /\b(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)\s+(AM|PM|MID(?:-?DAY)?|AFTERNOON|MORNING|SESSION)\b/i;
+  const sessionSummaryRegex = /\bSession\s*\d+\s*:\s*(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)\b/i;
+  const tableHeaderRegex = /\bGirls\s+Event\s+Boys\b/i;
+  const pairedRowRegex = /^\d{1,3}\s+.+\s+\d{1,3}$/i;
+  const explicitDualRegex = /^event\s*#?\s*\d{1,3}\s+.+\s+event\s*#?\s*\d{1,3}$/i;
+
+  for (const line of lines) {
+    if (
+      headingRegex.test(line) ||
+      sessionSummaryRegex.test(line) ||
+      tableHeaderRegex.test(line) ||
+      pairedRowRegex.test(line) ||
+      explicitDualRegex.test(line)
+    ) {
+      pushLine(line);
+    }
+  }
+
+  // If compaction is too aggressive, keep original text to avoid losing data.
+  const compacted = keepers.join("\n").trim();
+  if (!compacted || compacted.length < 400) {
+    return text;
+  }
+
+  return compacted;
+}
+
 function uploadFileMultipart(url, filePayload, extraFields = {}) {
   return apiFetch(url, {
     method: "POST",
@@ -1527,34 +1570,32 @@ meetImportForm.addEventListener("submit", async (event) => {
     let data;
 
     if (isPdfFile(filePayload.file)) {
-      stage = "uploading pdf to server";
-      showState(meetImportStatus, "Uploading PDF to server...", "info");
-      res = await uploadFileMultipart("/api/meets/import", filePayload);
+      stage = "extracting PDF text in browser";
+      showState(meetImportStatus, "Extracting and compacting PDF text...", "info");
+
+      let extractedText;
+      try {
+        extractedText = await extractPdfTextInBrowser(filePayload.file);
+      } catch (error) {
+        throw new Error(`PDF extraction failed: ${error.message}`);
+      }
+
+      const compactedText = compactMeetTextForImport(extractedText);
+
+      stage = "sending extracted text to server";
+      showState(meetImportStatus, "Importing extracted PDF text...", "info");
+      res = await uploadTextMultipart("/api/meets/import", {
+        content: compactedText,
+        file_type: "text/plain",
+        file_name: filePayload.file_name || "meet-import.txt",
+        encoding: "utf8",
+      });
       data = await safeJson(res);
 
       if (!res.ok && shouldRetryPdfImport(res, data, filePayload)) {
-        stage = "extracting PDF text in browser";
-        showState(
-          meetImportStatus,
-          "Server parse failed, extracting PDF text in browser...",
-          "info",
-        );
-
-        let extractedText;
-        try {
-          extractedText = await extractPdfTextInBrowser(filePayload.file);
-        } catch (error) {
-          throw new Error(`PDF extraction failed: ${error.message}`);
-        }
-
-        stage = "sending extracted text to server";
-        showState(meetImportStatus, "Importing extracted PDF text...", "info");
-        res = await uploadTextMultipart("/api/meets/import", {
-          content: extractedText,
-          file_type: "text/plain",
-          file_name: filePayload.file_name || "meet-import.txt",
-          encoding: "utf8",
-        });
+        stage = "uploading pdf to server";
+        showState(meetImportStatus, "Retrying with server-side PDF import...", "info");
+        res = await uploadFileMultipart("/api/meets/import", filePayload);
         data = await safeJson(res);
       }
     } else {
