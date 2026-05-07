@@ -1636,6 +1636,44 @@ function shouldRetryPdfImport(response, responseData, filePayload) {
   );
 }
 
+function getImportedMeetEventCount(responseData) {
+  const value = Number(responseData && responseData.meet && responseData.meet.event_count);
+  return Number.isFinite(value) && value >= 0 ? value : 0;
+}
+
+function getImportedMeetSessionCount(responseData) {
+  const days =
+    responseData && responseData.meet && Array.isArray(responseData.meet.days)
+      ? responseData.meet.days
+      : [];
+  return days.length;
+}
+
+function looksLikeSparsePdfImport(responseData) {
+  const eventCount = getImportedMeetEventCount(responseData);
+  const sessionCount = getImportedMeetSessionCount(responseData);
+  return eventCount <= 4 || sessionCount <= 2;
+}
+
+async function deleteImportedMeetForRetry(meetId) {
+  const id = Number(meetId);
+  if (!Number.isInteger(id) || id <= 0) return;
+
+  let res = await apiFetch(`/api/meets/${id}`, { method: "DELETE" });
+  if (res.ok || res.status === 204) return;
+
+  const body = await safeJson(res);
+  const routeNotFound =
+    res.status === 404 &&
+    body &&
+    typeof body.message === "string" &&
+    body.message.toLowerCase().includes("route not found");
+  if (routeNotFound) {
+    res = await apiFetch(`/api/meets/${id}/delete`, { method: "POST" });
+    if (res.ok || res.status === 204) return;
+  }
+}
+
 meetImportForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   btnImportMeet.disabled = true;
@@ -1648,12 +1686,7 @@ meetImportForm.addEventListener("submit", async (event) => {
     let data;
 
     if (isPdfFile(filePayload.file)) {
-      stage = "uploading pdf to server";
-      showState(meetImportStatus, "Importing PDF on server...", "info");
-      res = await uploadFileMultipart("/api/meets/import", filePayload);
-      data = await safeJson(res);
-
-      if (!res.ok && shouldRetryPdfImport(res, data, filePayload)) {
+      const importWithBrowserText = async () => {
         stage = "extracting PDF text in browser";
         showState(meetImportStatus, "Retrying with browser PDF extraction...", "info");
 
@@ -1664,18 +1697,51 @@ meetImportForm.addEventListener("submit", async (event) => {
           throw new Error(`PDF extraction failed: ${error.message}`);
         }
 
-        const compactedText = compactMeetTextForImport(extractedText);
-
         stage = "sending extracted text to server";
         showState(meetImportStatus, "Importing extracted PDF text...", "info");
-        res = await uploadTextMultipart("/api/meets/import", {
-          content: compactedText,
+        const browserRes = await uploadTextMultipart("/api/meets/import", {
+          content: extractedText,
           file_type: "text/plain",
           is_pdf: "1",
           file_name: filePayload.file_name || filePayload.file.name || "meet-import.txt",
           encoding: "utf8",
         });
-        data = await safeJson(res);
+        const browserData = await safeJson(browserRes);
+        return { res: browserRes, data: browserData };
+      };
+
+      stage = "uploading pdf to server";
+      showState(meetImportStatus, "Importing PDF on server...", "info");
+      res = await uploadFileMultipart("/api/meets/import", filePayload);
+      data = await safeJson(res);
+
+      if (!res.ok && shouldRetryPdfImport(res, data, filePayload)) {
+        const browserAttempt = await importWithBrowserText();
+        res = browserAttempt.res;
+        data = browserAttempt.data;
+      } else if (res.ok && looksLikeSparsePdfImport(data)) {
+        const firstMeetId = Number(data && data.meet && data.meet.id);
+        const firstEventCount = getImportedMeetEventCount(data);
+
+        try {
+          const browserAttempt = await importWithBrowserText();
+          if (browserAttempt.res.ok) {
+            const secondEventCount = getImportedMeetEventCount(browserAttempt.data);
+            const secondMeetId = Number(
+              browserAttempt.data && browserAttempt.data.meet && browserAttempt.data.meet.id,
+            );
+
+            if (secondEventCount > firstEventCount) {
+              await deleteImportedMeetForRetry(firstMeetId);
+              res = browserAttempt.res;
+              data = browserAttempt.data;
+            } else {
+              await deleteImportedMeetForRetry(secondMeetId);
+            }
+          }
+        } catch (_retryError) {
+          // Keep the first successful import if secondary recovery attempt fails.
+        }
       }
     } else {
       stage = "uploading meet file";

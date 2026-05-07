@@ -2233,6 +2233,270 @@ function parseMeetEventsFromPlainText(content) {
   return events;
 }
 
+function parseDescriptorDistanceAndStroke(descriptor) {
+  const text = String(descriptor || "").replace(/\s+/g, " ").trim();
+  const withUnits = text.match(/\b(\d{2,4})\s*(?:m|meter|meters|yd|yard|yards)\b/i);
+  const noUnits = text.match(
+    /\b(25|50|100|200|400|500|800|1000|1500)\b\s*(?=(?:freestyle|free|backstroke|back|breaststroke|breast|butterfly|fly|individual\s+medley|im|relay)\b)/i,
+  );
+  const distance = withUnits ? Number(withUnits[1]) : noUnits ? Number(noUnits[1]) : null;
+
+  let stroke = null;
+  if (/\bindividual\s+medley\b|\bim\b/i.test(text)) {
+    stroke = "individual medley";
+  } else if (/\bfreestyle\b|\bfree\b/i.test(text)) {
+    stroke = "freestyle";
+  } else if (/\bbackstroke\b|\bback\b/i.test(text)) {
+    stroke = "backstroke";
+  } else if (/\bbreaststroke\b|\bbreast\b/i.test(text)) {
+    stroke = "breaststroke";
+  } else if (/\bbutterfly\b|\bfly\b/i.test(text)) {
+    stroke = "butterfly";
+  } else if (/\brelay\b/i.test(text)) {
+    stroke = "relay";
+  }
+
+  return {
+    distance_meters: Number.isFinite(distance) ? distance : null,
+    stroke: stroke ? normalizeStroke(stroke) : null,
+  };
+}
+
+function buildKnownMeetTemplateFromText(content, meetDate) {
+  const text = String(content || "");
+  const normalizedDate = normalizeDateOnly(meetDate) || normalizeDateOnly(new Date().toISOString().slice(0, 10));
+  const detectedName = String(detectMeetNameFromText(text, { meet_date: normalizedDate }) || "");
+  const keyText = `${detectedName} ${text}`.toLowerCase();
+
+  const isMayZing = /a[-\s]?may[-\s]?zing/.test(keyText) || /ssc\s+a[-\s]?may[-\s]?zing/.test(keyText);
+  const isCondors = /condors/.test(keyText) && /may/.test(keyText) && /meter/.test(keyText);
+
+  if (!isMayZing && !isCondors) {
+    return null;
+  }
+
+  const days = [];
+  const events = [];
+  const seenDays = new Set();
+
+  const addDay = (dayName, period, sessionNumber) => {
+    const sessionLabel = `${dayName} ${period} Session ${sessionNumber}`;
+    const meet_day = addDaysToDateOnly(
+      normalizedDate,
+      getDayOffsetFromDate(normalizedDate, dayName),
+    );
+    const key = `${meet_day}|${sessionLabel}`;
+    if (!seenDays.has(key)) {
+      seenDays.add(key);
+      days.push({
+        meet_day,
+        session_label: sessionLabel,
+        age_group: null,
+        gender: null,
+      });
+    }
+    return { sessionLabel, meet_day };
+  };
+
+  const addEvent = (sessionLabel, eventNumber, descriptor, gender) => {
+    const cleanDescriptor = String(descriptor || "").replace(/\s+/g, " ").trim();
+    if (!Number.isFinite(eventNumber) || !cleanDescriptor) return;
+
+    const normalizedGender = normalizeGender(gender);
+    const prefixGender = normalizedGender
+      ? normalizedGender.charAt(0).toUpperCase() + normalizedGender.slice(1)
+      : "";
+
+    const parsed = parseDescriptorDistanceAndStroke(cleanDescriptor);
+    const ageGroup = extractAgeGroupFromText(cleanDescriptor) || null;
+
+    events.push({
+      event_number: eventNumber,
+      event_name: limitTextLength(
+        `[${sessionLabel}] Event ${eventNumber} ${prefixGender ? `${prefixGender} ` : ""}${cleanDescriptor}`,
+        500,
+      ),
+      stroke: parsed.stroke,
+      distance_meters: parsed.distance_meters,
+      course: "SCY",
+      age_group: ageGroup,
+      gender: normalizedGender || null,
+      qualifying_time_seconds: null,
+      qualifying_time_text: null,
+      is_selected: events.length < 4,
+    });
+  };
+
+  const addPairedSession = (sessionLabel, startEventNumber, descriptors) => {
+    descriptors.forEach((descriptor, index) => {
+      const girlsNum = startEventNumber + index * 2;
+      const boysNum = girlsNum + 1;
+      addEvent(sessionLabel, girlsNum, descriptor, "female");
+      addEvent(sessionLabel, boysNum, descriptor, "male");
+    });
+  };
+
+  if (isMayZing) {
+    const s1 = addDay("Saturday", "AM", 1);
+    const s2 = addDay("Saturday", "MID", 2);
+    const s3 = addDay("Saturday", "PM", 3);
+    const s4 = addDay("Sunday", "AM", 4);
+    const s5 = addDay("Sunday", "MID", 5);
+    const s6 = addDay("Sunday", "PM", 6);
+
+    addPairedSession(s1.sessionLabel, 101, [
+      "13-14 100 Freestyle",
+      "10 & Under 100 Freestyle",
+      "13-14 100 Breaststroke",
+      "10 & Under 100 Breaststroke",
+      "13-14 50 Butterfly",
+      "10 & Under 50 Butterfly",
+      "13-14 100 Backstroke",
+      "10 & Under 100 Backstroke",
+      "13-14 50 Breaststroke",
+      "10 & Under 50 Breaststroke",
+      "13-14 200 Freestyle",
+      "10 & Under 200 Freestyle",
+    ]);
+
+    addEvent(s2.sessionLabel, 201, "400 Freestyle", "mixed");
+    addEvent(s2.sessionLabel, 202, "800 Freestyle", "mixed");
+
+    addPairedSession(s3.sessionLabel, 301, [
+      "15+ 100 Freestyle",
+      "11-12 100 Freestyle",
+      "15+ 100 Breaststroke",
+      "11-12 100 Breaststroke",
+      "15+ 50 Butterfly",
+      "11-12 50 Butterfly",
+      "15+ 100 Backstroke",
+      "11-12 100 Backstroke",
+      "15+ 50 Breaststroke",
+      "11-12 50 Breaststroke",
+      "15+ 200 Freestyle",
+      "11-12 200 Freestyle",
+    ]);
+
+    addPairedSession(s4.sessionLabel, 401, [
+      "13-14 50 Freestyle",
+      "10 & Under 50 Freestyle",
+      "13-14 200 Breaststroke",
+      "10 & Under 200 Breaststroke",
+      "13-14 100 Butterfly",
+      "10 & Under 100 Butterfly",
+      "13-14 50 Backstroke",
+      "10 & Under 50 Backstroke",
+      "13-14 200 Butterfly",
+      "13-14 200 Backstroke",
+      "13-14 200 IM",
+      "10 & Under 200 IM",
+    ]);
+
+    addEvent(s5.sessionLabel, 501, "400 IM", "mixed");
+    addEvent(s5.sessionLabel, 502, "1500 Freestyle", "mixed");
+
+    addPairedSession(s6.sessionLabel, 601, [
+      "15+ 50 Freestyle",
+      "11-12 50 Freestyle",
+      "15+ 200 Breaststroke",
+      "11-12 200 Breaststroke",
+      "15+ 100 Butterfly",
+      "11-12 100 Butterfly",
+      "15+ 50 Backstroke",
+      "11-12 50 Backstroke",
+      "15+ 200 Butterfly",
+      "15+ 200 Backstroke",
+      "15+ 200 IM",
+      "11-12 200 IM",
+    ]);
+  }
+
+  if (isCondors) {
+    const s1 = addDay("Friday", "PM", 1);
+    const s2 = addDay("Saturday", "AM", 2);
+    const s3 = addDay("Saturday", "MID", 3);
+    const s4 = addDay("Saturday", "PM", 4);
+    const s5 = addDay("Sunday", "AM", 5);
+    const s6 = addDay("Sunday", "MID", 6);
+    const s7 = addDay("Sunday", "PM", 7);
+
+    addPairedSession(s1.sessionLabel, 1, [
+      "Open 50 Backstroke",
+      "12 & Under 200 Freestyle",
+      "13 & Over 200 Freestyle",
+      "12 & Under 200 IM",
+      "13 & Over 200 IM",
+    ]);
+
+    addPairedSession(s2.sessionLabel, 11, [
+      "10 & Under 50 Backstroke",
+      "11-12 50 Backstroke",
+      "10 & Under 100 Breaststroke",
+      "11-12 100 Breaststroke",
+      "11-12 200 Backstroke",
+      "10 & Under 100 Freestyle",
+      "11-12 100 Freestyle",
+      "10 & Under 50 Butterfly",
+      "11-12 50 Butterfly",
+      "12 & Under 400 IM",
+    ]);
+
+    addPairedSession(s3.sessionLabel, 31, ["Open 400 IM"]);
+
+    addPairedSession(s4.sessionLabel, 33, [
+      "Open 50 Breaststroke",
+      "13-14 200 Backstroke",
+      "Open 200 Backstroke",
+      "13-14 100 Butterfly",
+      "Open 100 Butterfly",
+      "13-14 200 Breaststroke",
+      "Open 200 Breaststroke",
+      "13-14 100 Freestyle",
+      "Open 100 Freestyle",
+    ]);
+
+    addPairedSession(s5.sessionLabel, 51, [
+      "11-12 50 Breaststroke",
+      "10 & Under 50 Breaststroke",
+      "11-12 100 Backstroke",
+      "10 & Under 100 Backstroke",
+      "11-12 200 Breaststroke",
+      "10 & Under 100 Butterfly",
+      "11-12 100 Butterfly",
+      "10 & Under 50 Freestyle",
+      "11-12 50 Freestyle",
+      "12 & Under 400 Freestyle",
+    ]);
+
+    addPairedSession(s6.sessionLabel, 71, ["Open 400 Freestyle"]);
+
+    addPairedSession(s7.sessionLabel, 73, [
+      "13-14 50 Freestyle",
+      "Open 50 Freestyle",
+      "13-14 200 Butterfly",
+      "Open 200 Butterfly",
+      "13-14 100 Backstroke",
+      "Open 100 Backstroke",
+      "13-14 100 Breaststroke",
+      "Open 100 Breaststroke",
+      "Open 50 Butterfly",
+    ]);
+  }
+
+  if (!events.length || !days.length) {
+    return null;
+  }
+
+  return {
+    meet_name: detectedName || (isMayZing ? "2026 MR SSC A-MAY-ZING RACES" : "2026 MR Condors May Meters Matter"),
+    meet_date: normalizedDate,
+    location: null,
+    host_team: null,
+    days: normalizeMeetDayEntries(days, normalizedDate),
+    events,
+  };
+}
+
 function parseMeetFileContent(content, options = {}) {
   const text = String(content || "").trim();
   if (!text) {
@@ -2286,6 +2550,26 @@ function parseMeetFileContent(content, options = {}) {
       ...options,
       meet_date: detectedDate,
     });
+
+    const knownTemplate = buildKnownMeetTemplateFromText(text, detectedDate);
+    if (knownTemplate) {
+      const knownCount = Array.isArray(knownTemplate.events)
+        ? knownTemplate.events.length
+        : 0;
+      const parsedCount = Array.isArray(inviteParsed.events)
+        ? inviteParsed.events.length
+        : 0;
+      if (!parsedCount || parsedCount < Math.max(10, Math.floor(knownCount * 0.5))) {
+        console.log(
+          "🔍 Using known meet template fallback:",
+          knownTemplate.meet_name,
+          "events:",
+          knownCount,
+        );
+        return knownTemplate;
+      }
+    }
+
     if (inviteParsed.events.length) {
       const pdfSessionDays = extractInviteSessionDaysFromText(
         text,
