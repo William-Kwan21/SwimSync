@@ -1599,6 +1599,16 @@ function parseInviteEventRowsFromBlock(blockText) {
         pushEvent(firstNum, descriptor, "male");
         pushEvent(secondNum, descriptor, "female");
       }
+    } else {
+      // Fallback: single event number (distance sessions, mixed events)
+      const singleEventMatch = line.match(/^(\d{1,3})\s+(.+)$/);
+      if (singleEventMatch) {
+        const eventNum = Number(singleEventMatch[1]);
+        const descriptor = String(singleEventMatch[2] || "").trim();
+        if (descriptor && !descriptor.match(/^(girls?|boys?|event|order|session|warm|start)/i)) {
+          pushEvent(eventNum, descriptor, "mixed");
+        }
+      }
     }
   }
 
