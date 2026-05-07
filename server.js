@@ -1449,6 +1449,9 @@ function extractWarmupTimeFromBlock(blockText) {
 }
 
 function parseInviteEventRowsFromBlock(blockText) {
+  const rawText = String(blockText || "")
+    .replace(/\r\n/g, "\n")
+    .replace(/\r/g, "\n");
   const events = [];
   const seen = new Set();
 
