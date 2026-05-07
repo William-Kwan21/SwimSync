@@ -4689,6 +4689,54 @@ app.get("/api/meets/:id", authenticate, async (req, res) => {
       [meetId],
     );
 
+    app.get("/api/meets/:id/original-file", authenticate, async (req, res) => {
+      const meetId = Number(req.params.id);
+      if (!Number.isInteger(meetId) || meetId <= 0) {
+        return res.status(400).json({ message: "Invalid meet id" });
+      }
+
+      try {
+        const [rows] = await pool.query(
+          `SELECT import_filename
+           FROM meets
+           WHERE id = ?
+           LIMIT 1`,
+          [meetId],
+        );
+
+        if (!rows.length) {
+          return res.status(404).json({ message: "Meet not found" });
+        }
+
+        const importFilename = String(rows[0].import_filename || "").trim();
+        if (!importFilename) {
+          return res.status(404).json({ message: "No original file found for this meet" });
+        }
+
+        const preferredExt = path.extname(importFilename);
+        let filePath = preferredExt
+          ? path.join(uploadsDir, `${meetId}${preferredExt}`)
+          : "";
+
+        if (!filePath || !fs.existsSync(filePath)) {
+          const candidates = fs
+            .readdirSync(uploadsDir)
+            .filter((name) => name.startsWith(`${meetId}.`));
+          if (!candidates.length) {
+            return res.status(404).json({ message: "Original file is not available on server" });
+          }
+          filePath = path.join(uploadsDir, candidates[0]);
+        }
+
+        return res.download(filePath, importFilename);
+      } catch (error) {
+        return res.status(500).json({
+          message: "Failed to download original file",
+          error: error.message,
+        });
+      }
+    });
+
     if (!meetRows.length) {
       return res.status(404).json({ message: "Meet not found" });
     }

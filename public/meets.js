@@ -277,6 +277,34 @@ async function apiFetch(url, options = {}) {
   return response;
 }
 
+async function downloadOriginalMeetFile(meetId, fileName) {
+  const parsedMeetId = Number(meetId);
+  if (!Number.isInteger(parsedMeetId) || parsedMeetId <= 0) {
+    throw new Error("Invalid meet id");
+  }
+
+  const response = await apiFetch(`/api/meets/${parsedMeetId}/original-file`);
+  if (!response.ok) {
+    const message = await readResponseMessage(response);
+    throw new Error(message || `Download failed (${response.status})`);
+  }
+
+  const blob = await response.blob();
+  const blobUrl = URL.createObjectURL(blob);
+  const downloadName = String(fileName || `meet-${parsedMeetId}.pdf`).trim();
+
+  try {
+    const link = document.createElement("a");
+    link.href = blobUrl;
+    link.download = downloadName;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+  } finally {
+    setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
+  }
+}
+
 async function checkHealth() {
   try {
     const res = await fetch("/api/health");
@@ -493,11 +521,16 @@ function renderImportantInfo(detail) {
   // Build original file section
   let fileHtml = "";
   if (meet.import_filename) {
+    const meetId = Number(meet.id);
     fileHtml = `
       <div style="padding: 0.75rem; border: 1px solid #dee2e6; border-radius: 4px;">
         <div style="font-weight: 600; margin-bottom: 0.5rem;">Original File</div>
         <div style="word-break: break-all; font-size: 0.9rem;">
-          <a href="#" style="color: #0066cc; text-decoration: none; cursor: pointer; display: inline-flex; align-items: center; gap: 0.5rem;">
+          <a href="#"
+             data-download-original-file="1"
+             data-meet-id="${Number.isInteger(meetId) ? meetId : ""}"
+             data-file-name="${escHtml(meet.import_filename)}"
+             style="color: #0066cc; text-decoration: none; cursor: pointer; display: inline-flex; align-items: center; gap: 0.5rem;">
             <span>📄</span>
             <span>${escHtml(meet.import_filename)}</span>
           </a>
@@ -1578,33 +1611,33 @@ meetImportForm.addEventListener("submit", async (event) => {
     let data;
 
     if (isPdfFile(filePayload.file)) {
-      stage = "extracting PDF text in browser";
-      showState(meetImportStatus, "Extracting and compacting PDF text...", "info");
-
-      let extractedText;
-      try {
-        extractedText = await extractPdfTextInBrowser(filePayload.file);
-      } catch (error) {
-        throw new Error(`PDF extraction failed: ${error.message}`);
-      }
-
-      const compactedText = compactMeetTextForImport(extractedText);
-
-      stage = "sending extracted text to server";
-      showState(meetImportStatus, "Importing extracted PDF text...", "info");
-      res = await uploadTextMultipart("/api/meets/import", {
-        content: compactedText,
-        file_type: "text/plain",
-        is_pdf: "1",
-        file_name: filePayload.file_name || filePayload.file.name || "meet-import.txt",
-        encoding: "utf8",
-      });
+      stage = "uploading pdf to server";
+      showState(meetImportStatus, "Importing PDF on server...", "info");
+      res = await uploadFileMultipart("/api/meets/import", filePayload);
       data = await safeJson(res);
 
       if (!res.ok && shouldRetryPdfImport(res, data, filePayload)) {
-        stage = "uploading pdf to server";
-        showState(meetImportStatus, "Retrying with server-side PDF import...", "info");
-        res = await uploadFileMultipart("/api/meets/import", filePayload);
+        stage = "extracting PDF text in browser";
+        showState(meetImportStatus, "Retrying with browser PDF extraction...", "info");
+
+        let extractedText;
+        try {
+          extractedText = await extractPdfTextInBrowser(filePayload.file);
+        } catch (error) {
+          throw new Error(`PDF extraction failed: ${error.message}`);
+        }
+
+        const compactedText = compactMeetTextForImport(extractedText);
+
+        stage = "sending extracted text to server";
+        showState(meetImportStatus, "Importing extracted PDF text...", "info");
+        res = await uploadTextMultipart("/api/meets/import", {
+          content: compactedText,
+          file_type: "text/plain",
+          is_pdf: "1",
+          file_name: filePayload.file_name || filePayload.file.name || "meet-import.txt",
+          encoding: "utf8",
+        });
         data = await safeJson(res);
       }
     } else {
@@ -1826,6 +1859,23 @@ meetsTbody.addEventListener("click", async (event) => {
   if (Number.isNaN(meetId)) return;
   await loadMeetDetail(meetId);
 });
+
+if (meetDetailCard) {
+  meetDetailCard.addEventListener("click", async (event) => {
+    const link = event.target.closest("a[data-download-original-file]");
+    if (!link) return;
+
+    event.preventDefault();
+    const meetId = Number(link.getAttribute("data-meet-id") || "");
+    const fileName = String(link.getAttribute("data-file-name") || "").trim();
+
+    try {
+      await downloadOriginalMeetFile(meetId, fileName);
+    } catch (error) {
+      showState(meetsError, `Download failed: ${error.message}`, "error");
+    }
+  });
+}
 
 if (declareControls) {
   declareControls.addEventListener("click", (event) => {
