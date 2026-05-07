@@ -1053,6 +1053,35 @@ function renderCoachEntryTable(detail) {
     return;
   }
 
+  const meet = detail && detail.meet ? detail.meet : {};
+  const baseDate = meet.start_date || meet.meet_date || null;
+  const sessionRows = buildSessionRows(detail);
+  const sessionDaysByLabel = new Map();
+  sessionRows.forEach((row) => {
+    const label = normalizeSessionLabelForDisplay(row.session_label);
+    const meetDay = String(row.meet_day || "").slice(0, 10);
+    if (!label || !meetDay) return;
+    if (!sessionDaysByLabel.has(label)) {
+      sessionDaysByLabel.set(label, new Set());
+    }
+    sessionDaysByLabel.get(label).add(meetDay);
+  });
+
+  const declaredYesSessionKeysBySwimmer = new Map();
+  (detail.declarations || []).forEach((row) => {
+    if (String(row.status || "").toLowerCase() !== "yes") return;
+    const swimmerId = Number(row.swimmer_id);
+    const meetDay = String(row.meet_day || "").slice(0, 10);
+    const sessionLabel = normalizeSessionLabelForDisplay(row.session_label || "");
+    if (!Number.isInteger(swimmerId) || !meetDay || !sessionLabel) return;
+    if (!declaredYesSessionKeysBySwimmer.has(swimmerId)) {
+      declaredYesSessionKeysBySwimmer.set(swimmerId, new Set());
+    }
+    declaredYesSessionKeysBySwimmer
+      .get(swimmerId)
+      .add(`${meetDay}|${sessionLabel}`);
+  });
+
   const declaredYesSet = new Set(
     (detail.declarations || [])
       .filter((row) => String(row.status || "").toLowerCase() === "yes")
@@ -1079,9 +1108,36 @@ function renderCoachEntryTable(detail) {
       return;
     }
 
+    const declaredSessionKeys =
+      declaredYesSessionKeysBySwimmer.get(swimmerId) || new Set();
+
     const eligibleEvents = allMeetEvents.filter((event) => {
       const eligibleSet = eligibilityBySwimmer.get(swimmerId) || new Set();
-      return eligibleSet.has(Number(event.id));
+      if (!eligibleSet.has(Number(event.id))) return false;
+
+      const parsed = parseEventNameWithSession(event.event_name || "");
+      const eventSessionLabel = normalizeSessionLabelForDisplay(parsed.sessionLabel || "");
+      if (!eventSessionLabel) return false;
+
+      const knownDays = sessionDaysByLabel.get(eventSessionLabel) || new Set();
+      if (knownDays.size > 0) {
+        for (const meetDay of knownDays) {
+          if (declaredSessionKeys.has(`${meetDay}|${eventSessionLabel}`)) {
+            return true;
+          }
+        }
+        return false;
+      }
+
+      const dayToken = String(eventSessionLabel).split(" ")[0] || "";
+      const inferredDay = baseDate
+        ? addDaysToDateOnly(baseDate, getDayOffsetFromDate(baseDate, dayToken))
+        : null;
+      if (inferredDay) {
+        return declaredSessionKeys.has(`${inferredDay}|${eventSessionLabel}`);
+      }
+
+      return false;
     });
 
     // Group events by session
