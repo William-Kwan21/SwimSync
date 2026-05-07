@@ -1,10 +1,11 @@
 {
-  "name": "hello-db",
+  "name": "swimsync",
   "version": "1.0.0",
-  "description": "Phase 1 + Phase 2 hello-db app for EC2",
+  "description": "SwimSync team management app",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "pm2 restart swimsync || pm2 start server.js --name swimsync",
+    "start:direct": "node server.js"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",
