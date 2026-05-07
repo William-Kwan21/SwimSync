@@ -1587,7 +1587,8 @@ meetImportForm.addEventListener("submit", async (event) => {
       res = await uploadTextMultipart("/api/meets/import", {
         content: compactedText,
         file_type: "text/plain",
-        file_name: filePayload.file_name || "meet-import.txt",
+        is_pdf: "1",
+        file_name: filePayload.file_name || filePayload.file.name || "meet-import.txt",
         encoding: "utf8",
       });
       data = await safeJson(res);

@@ -641,7 +641,7 @@ async function extractImportPayload(req) {
       content: multipart.fields.content || "",
       file_name: fileName,
       file_buffer: null,
-      is_pdf: false,
+      is_pdf: multipart.fields.is_pdf === "1" || multipart.fields.is_pdf === "true",
       default_swimmer_id: defaultSwimmerId,
     };
   }
@@ -1660,20 +1660,11 @@ function parseInviteSessionEventsFromText(content, options = {}) {
   // For each session from allSessions, extract events from nearby text
   allSessions.forEach((session) => {
     const sessionLabel = session.session_label;
-    const matchingMarker = sessionMarkers.find((m) => {
-      if (m.key === sessionLabel) return true;
-      if (m.key.toLowerCase() === sessionLabel.toLowerCase()) return true;
-      const dayPartFromSession = sessionLabel.split(" ")[0];
-      const dayPartFromMarker = m.key.split(" ")[0];
-      if (
-        dayPartFromSession &&
-        dayPartFromMarker &&
-        dayPartFromSession.toLowerCase() === dayPartFromMarker.toLowerCase()
-      ) {
-        return true;
-      }
-      return false;
-    });
+    // Only exact-match on session label — day-only fallback causes multiple sessions
+    // (e.g. "Saturday AM" and "Saturday PM") to collide on the same marker.
+    const matchingMarker = sessionMarkers.find(
+      (m) => m.key.toLowerCase() === sessionLabel.toLowerCase(),
+    );
 
     if (matchingMarker) {
       const blockStart = matchingMarker.index + matchingMarker.match.length;
