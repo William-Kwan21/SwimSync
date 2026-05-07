@@ -5248,6 +5248,25 @@ app.get("/api/meets/:id", authenticate, async (req, res) => {
               session_label: d.session_label,
             })),
           );
+          // Upsert event-derived sessions into meet_days so declarations can validate against them
+          try {
+            for (const rd of returnedDays) {
+              if (rd.meet_day && rd.session_label != null) {
+                await pool.query(
+                  `INSERT INTO meet_days (meet_id, meet_day, session_label, age_group, gender)
+                   VALUES (?, ?, ?, ?, ?)
+                   ON DUPLICATE KEY UPDATE age_group = COALESCE(age_group, VALUES(age_group)),
+                                           gender = COALESCE(gender, VALUES(gender))`,
+                  [meetId, rd.meet_day, rd.session_label, rd.age_group || null, rd.gender || null],
+                );
+              }
+            }
+          } catch (upsertErr) {
+            console.log(
+              "⚠️ Failed to upsert event-derived meet_days:",
+              upsertErr && upsertErr.message ? upsertErr.message : upsertErr,
+            );
+          }
         }
       }
     } catch (reconErr) {
@@ -5625,6 +5644,29 @@ app.put(
             const sessionRow = meetDayMap.get(sessionKey);
             if (sessionRow) {
               sessionRowsForEntry = [sessionRow];
+            } else {
+              // Fallback: check if this session label exists in meet_events names for this meet.
+              // This handles event-derived sessions not yet upserted into meet_days.
+              const [evCheck] = await connection.query(
+                `SELECT COUNT(*) AS cnt FROM meet_events
+                 WHERE meet_id = ? AND event_name LIKE ?`,
+                [meetId, `[${sessionLabel}]%`],
+              );
+              if (evCheck && evCheck[0] && Number(evCheck[0].cnt) > 0) {
+                // Synthetic open session row — eligibility is checked per-event, not per-session
+                const synthetic = { meet_day: meetDay, session_label: sessionLabel, age_group: null, gender: null };
+                sessionRowsForEntry = [synthetic];
+                // Upsert so future lookups hit the DB cache
+                try {
+                  await connection.query(
+                    `INSERT INTO meet_days (meet_id, meet_day, session_label, age_group, gender)
+                     VALUES (?, ?, ?, NULL, NULL)
+                     ON DUPLICATE KEY UPDATE id = id`,
+                    [meetId, meetDay, sessionLabel],
+                  );
+                  meetDayMap.set(sessionKey, synthetic);
+                } catch (_) { /* ignore upsert errors */ }
+              }
             }
           } else if (meetDay) {
             sessionRowsForEntry = meetDayRows.filter(
