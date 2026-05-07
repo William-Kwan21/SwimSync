@@ -697,16 +697,21 @@ function renderMeetOverview(detail) {
   `;
 }
 
+function normalizeEventTitle(title) {
+  // Replace "15+" style age prefixes with "15 & Over" in event name text
+  return String(title || "").replace(/\b(\d{1,2})\+/g, "$1 & Over");
+}
+
 function parseEventNameWithSession(eventName) {
   const raw = String(eventName || "").trim();
   const match = raw.match(/^\[([^\]]+)\]\s*(.+)$/);
   if (!match) {
-    return { sessionLabel: "", eventTitle: raw };
+    return { sessionLabel: "", eventTitle: normalizeEventTitle(raw) };
   }
 
   return {
     sessionLabel: String(match[1] || "").trim(),
-    eventTitle: String(match[2] || "").trim(),
+    eventTitle: normalizeEventTitle(String(match[2] || "").trim()),
   };
 }
 
@@ -807,11 +812,12 @@ function renderPublicEventsTable(detail) {
         const entryState = "OPEN";
         const entryClass = "event-entry-in";
 
-        const ageGroup = normalizeAgeGroupLabel(
-          event.age_group || extractAgeGroupFromEventName(cleanEventName),
-        );
+        const ageGroup =
+          normalizeAgeGroupLabel(
+            event.age_group || extractAgeGroupFromEventName(cleanEventName),
+          ) || "Open";
         const genderTag = formatGenderTag(event.gender);
-        const tagBits = [genderTag || "", ageGroup || ""].filter(Boolean);
+        const tagBits = [genderTag || "", ageGroup].filter(Boolean);
 
         const metaBits = [
           event.distance_meters ? `${event.distance_meters}m` : "",
@@ -1099,11 +1105,12 @@ function renderCoachEntryTable(detail) {
               : "";
             const parsed = parseEventNameWithSession(event.event_name || "");
             const displayName = parsed.eventTitle || event.event_name;
-            const ageTag = normalizeAgeGroupLabel(
-              event.age_group || extractAgeGroupFromEventName(displayName || ""),
-            );
+            const ageTag =
+              normalizeAgeGroupLabel(
+                event.age_group || extractAgeGroupFromEventName(displayName || ""),
+              ) || "Open";
             const genderTag = formatGenderTag(event.gender);
-            const filterTags = [genderTag || "", ageTag || ""]
+            const filterTags = [genderTag || "", ageTag]
               .filter(Boolean)
               .map(
                 (tag) =>

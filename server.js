@@ -5444,6 +5444,7 @@ app.get("/api/meets/:id", authenticate, async (req, res) => {
       events: events.map((ev) => ({
         ...ev,
         age_group: normalizeAgeGroupLabel(ev.age_group) || ev.age_group,
+        event_name: String(ev.event_name || "").replace(/\b(\d{1,2})\+/g, "$1 & Over"),
       })),
       swimmers: swimmerRows,
       best_times: bestTimesRows,
