@@ -1148,13 +1148,30 @@ function normalizeInviteSessionPeriod(value) {
 
 function inferInviteSessionPeriodFromText(value) {
   const text = String(value || "");
-  const timeMatch = text.match(/\b(\d{1,2})(?::(\d{2}))?\s*(AM|PM)\b/i);
-  if (!timeMatch) {
+  const warmupAfterMatch = text.match(
+    /\b(\d{1,2})(?::(\d{2}))?\s*(AM|PM)\b[^\n]{0,24}\bwarm[- ]?up\b/i,
+  );
+  const warmupBeforeMatch = text.match(
+    /\bwarm[- ]?up\b[^\n]{0,24}\b(\d{1,2})(?::(\d{2}))?\s*(AM|PM)\b/i,
+  );
+
+  const allTimeMatches = Array.from(
+    text.matchAll(/\b(\d{1,2})(?::(\d{2}))?\s*(AM|PM)\b/gi),
+  );
+
+  const preferredMatch =
+    warmupAfterMatch ||
+    warmupBeforeMatch ||
+    allTimeMatches.find((entry) => String(entry[3] || "").toUpperCase() === "PM") ||
+    allTimeMatches[0] ||
+    null;
+
+  if (!preferredMatch) {
     return normalizeInviteSessionPeriod(value || "PM");
   }
 
-  const hour = Number(timeMatch[1]);
-  const meridiem = String(timeMatch[3] || "").toUpperCase();
+  const hour = Number(preferredMatch[1]);
+  const meridiem = String(preferredMatch[3] || "").toUpperCase();
   if (meridiem === "AM") {
     return "AM";
   }
@@ -1417,6 +1434,23 @@ function extractInviteSessionDaysFromText(content, meetDate) {
   const seen = new Set();
   const trimmedLines = text.split("\n").map((line) => String(line || "").replace(/\s+/g, " ").trim());
 
+  const normalizeDayNameFromText = (value) => {
+    const dayMatch = String(value || "").match(
+      /\b(mon(?:day)?|tue(?:s|sday)?|wed(?:nesday)?|thu(?:r|rs|rsday)?|fri(?:day)?|sat(?:urday)?|sun(?:day)?)\b/i,
+    );
+    if (!dayMatch) return null;
+
+    const token = String(dayMatch[1] || "").toLowerCase();
+    if (token.startsWith("mon")) return "Monday";
+    if (token.startsWith("tue")) return "Tuesday";
+    if (token.startsWith("wed")) return "Wednesday";
+    if (token.startsWith("thu")) return "Thursday";
+    if (token.startsWith("fri")) return "Friday";
+    if (token.startsWith("sat")) return "Saturday";
+    if (token.startsWith("sun")) return "Sunday";
+    return null;
+  };
+
   const addMatch = (index, dayName, sessionRaw, sessionNumber = null) => {
     const normalizedSession = normalizeInviteSessionPeriod(sessionRaw || "PM");
     const sessionDate = meetDate
@@ -1469,9 +1503,9 @@ function extractInviteSessionDaysFromText(content, meetDate) {
 
     for (let offset = 0; offset <= 2; offset += 1) {
       const candidate = trimmedLines[lineIndex + offset] || "";
-      const dayMatch = candidate.match(/\b(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)\b/i);
-      if (dayMatch) {
-        dayName = dayMatch[1];
+      const parsedDay = normalizeDayNameFromText(candidate);
+      if (parsedDay) {
+        dayName = parsedDay;
         contextLine = `${line} ${candidate}`.trim();
         break;
       }
@@ -1594,8 +1628,13 @@ function parseInviteEventRowsFromBlock(blockText) {
       ? eventNameParts.join(" ")
       : descriptorForParsing;
 
+    const eventNumPrefix = Number.isFinite(eventNumber) && eventNumber > 0
+      ? `Event ${eventNumber} `
+      : "";
+
     events.push({
-      event_name: limitTextLength(eventNameBuilt, 150),
+      event_number: Number.isFinite(eventNumber) && eventNumber > 0 ? eventNumber : null,
+      event_name: limitTextLength(`${eventNumPrefix}${eventNameBuilt}`, 150),
       stroke: stroke ? normalizeStroke(stroke) : null,
       distance_meters: Number.isFinite(distanceMeters) ? distanceMeters : null,
       course: "SCY",
@@ -1619,11 +1658,48 @@ function parseInviteEventRowsFromBlock(blockText) {
     )
     .filter(Boolean);
 
+  const hasEventDescriptorHints = (value) => {
+    const textValue = String(value || "").trim();
+    if (!textValue) return false;
+    const hasDistance = /\b(25|50|100|200|400|500|800|1000|1500)\b/i.test(textValue);
+    const hasStroke = /\b(freestyle|free|backstroke|back|breaststroke|breast|butterfly|fly|individual\s+medley|im|relay)\b/i.test(textValue);
+    return hasDistance && hasStroke;
+  };
+
+  const parsePackedEventRows = (line) => {
+    const pairRegex = /(\d{1,3})\s+(.+?\b(?:freestyle|free|backstroke|back|breaststroke|breast|butterfly|fly|individual\s+medley|im|relay)\b)\s+(\d{1,3})(?=\s+\d{1,3}\b|$)/gi;
+    let pairMatch;
+    while ((pairMatch = pairRegex.exec(line)) !== null) {
+      const firstNum = Number(pairMatch[1]);
+      const descriptor = String(pairMatch[2] || "")
+        .replace(/\s+/g, " ")
+        .trim();
+      const secondNum = Number(pairMatch[3]);
+
+      if (!hasEventDescriptorHints(descriptor)) {
+        continue;
+      }
+
+      const firstIsFemale = firstNum % 2 === 1;
+      pushEvent(firstNum, descriptor, firstIsFemale ? "female" : "male");
+      pushEvent(secondNum, descriptor, firstIsFemale ? "male" : "female");
+    }
+  };
+
   for (const line of lines) {
+    if (/\bgirls\s+event\s+boys\b/i.test(line)) {
+      const compactLine = line
+        .replace(/.*?\bgirls\s+event\s+boys\b\s*/i, "")
+        .replace(/\b(?:warm[- ]?up|start)\s*:?.*$/i, "")
+        .trim();
+      if (compactLine) {
+        parsePackedEventRows(compactLine);
+      }
+      continue;
+    }
+
     if (
-      /\b(girls\s+event\s+boys|order\s+of\s+events|session\s*\d+|warm[- ]?up|start:)\b/i.test(
-        line,
-      )
+      /\b(order\s+of\s+events|session\s*\d+|warm[- ]?up|start:)\b/i.test(line)
     ) {
       continue;
     }
@@ -1661,6 +1737,8 @@ function parseInviteEventRowsFromBlock(blockText) {
         if (descriptor && !descriptor.match(/^(girls?|boys?|event|order|session|warm|start)/i)) {
           pushEvent(eventNum, descriptor, "mixed");
         }
+      } else {
+        parsePackedEventRows(line);
       }
     }
   }
@@ -4263,11 +4341,12 @@ app.post(
 
       if (parsedMeet.events.length) {
         const eventValues = parsedMeet.events
-          .map(() => "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+          .map(() => "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
           .join(", ");
 
         const eventParams = parsedMeet.events.flatMap((event) => [
           meetId,
+          event.event_number != null ? event.event_number : null,
           event.event_name,
           event.stroke,
           event.distance_meters,
@@ -4281,7 +4360,7 @@ app.post(
 
         await connection.query(
           `INSERT INTO meet_events
-             (meet_id, event_name, stroke, distance_meters, course, age_group, gender, is_selected, qualifying_time_seconds, qualifying_time_text)
+             (meet_id, event_number, event_name, stroke, distance_meters, course, age_group, gender, is_selected, qualifying_time_seconds, qualifying_time_text)
            VALUES ${eventValues}`,
           eventParams,
         );
@@ -4622,11 +4701,11 @@ app.get("/api/meets/:id", authenticate, async (req, res) => {
       [meetId],
     );
     const [events] = await pool.query(
-      `SELECT id, event_name, stroke, distance_meters, course, age_group, gender,
+      `SELECT id, event_number, event_name, stroke, distance_meters, course, age_group, gender,
               is_selected, qualifying_time_seconds, qualifying_time_text
        FROM meet_events
        WHERE meet_id = ?
-       ORDER BY id ASC`,
+       ORDER BY COALESCE(event_number, 99999) ASC, id ASC`,
       [meetId],
     );
 

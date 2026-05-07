@@ -663,12 +663,14 @@ function renderPublicEventsTable(detail) {
         const parsed = parseEventNameWithSession(event.event_name || "");
         const eventTitle = parsed.eventTitle || String(event.event_name || "");
 
-        const eventNumberMatch = String(eventTitle || "").match(
-          /\bEvent\s+(\d{1,3})\b/i,
-        );
-        const eventNumber = eventNumberMatch
-          ? eventNumberMatch[1]
-          : String(index + 1);
+        // Prefer the stored event_number; fall back to parsing it out of the name
+        const eventNumberRaw = event.event_number != null
+          ? event.event_number
+          : (() => {
+              const m = String(eventTitle || "").match(/\bEvent\s+(\d{1,3})\b/i);
+              return m ? m[1] : null;
+            })();
+        const eventNumber = eventNumberRaw != null ? String(eventNumberRaw) : String(index + 1);
         const cleanEventName = String(eventTitle || "-")
           .replace(/\bEvent\s+\d{1,3}\b\s*/i, "")
           .trim();

@@ -131,6 +131,7 @@ CREATE TABLE IF NOT EXISTS meets (
 CREATE TABLE IF NOT EXISTS meet_events (
   id INT AUTO_INCREMENT PRIMARY KEY,
   meet_id INT NOT NULL,
+  event_number INT NULL,
   event_name VARCHAR(500) NOT NULL,
   stroke VARCHAR(40) NULL,
   distance_meters INT NULL,
