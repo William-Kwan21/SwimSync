@@ -5564,11 +5564,6 @@ app.put(
           .json({ message: "No qualified swimmers for this meet" });
       }
 
-      const swimmerRows = await getSwimmerRowsByIds(accessibleSwimmerIds);
-      const swimmerById = new Map(
-        swimmerRows.map((row) => [Number(row.swimmer_id), row]),
-      );
-
       const connection = await pool.getConnection();
       try {
         await connection.beginTransaction();
@@ -5652,22 +5647,10 @@ app.put(
           const note =
             typeof entry.note === "string" ? entry.note.trim() : null;
 
-          const swimmer = swimmerById.get(swimmerId);
           for (const sessionRow of sessionRowsForEntry) {
             const resolvedSessionLabel = normalizeSessionLabel(
               sessionRow.session_label || "",
             );
-            const allowedForSession =
-              swimmer &&
-              genderMatches(sessionRow.gender, swimmer.gender) &&
-              ageMatches(sessionRow.age_group, swimmer.date_of_birth, meetDay);
-
-            if (status === "yes" && !allowedForSession) {
-              await connection.rollback();
-              return res.status(400).json({
-                message: `Swimmer is not eligible for session declaration: ${entry.swimmer_id}`,
-              });
-            }
 
             await connection.query(
               `INSERT INTO meet_declarations
