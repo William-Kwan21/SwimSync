@@ -1688,7 +1688,7 @@ meetImportForm.addEventListener("submit", async (event) => {
     if (isPdfFile(filePayload.file)) {
       const importWithBrowserText = async () => {
         stage = "extracting PDF text in browser";
-        showState(meetImportStatus, "Retrying with browser PDF extraction...", "info");
+        showState(meetImportStatus, "Extracting PDF text in browser...", "info");
 
         let extractedText;
         try {
@@ -1710,31 +1710,34 @@ meetImportForm.addEventListener("submit", async (event) => {
         return { res: browserRes, data: browserData };
       };
 
-      stage = "uploading pdf to server";
-      showState(meetImportStatus, "Importing PDF on server...", "info");
-      res = await uploadFileMultipart("/api/meets/import", filePayload);
-      data = await safeJson(res);
+      const firstAttempt = await importWithBrowserText();
+      res = firstAttempt.res;
+      data = firstAttempt.data;
 
       if (!res.ok && shouldRetryPdfImport(res, data, filePayload)) {
-        const browserAttempt = await importWithBrowserText();
-        res = browserAttempt.res;
-        data = browserAttempt.data;
+        stage = "uploading pdf to server";
+        showState(meetImportStatus, "Retrying with server-side PDF import...", "info");
+        res = await uploadFileMultipart("/api/meets/import", filePayload);
+        data = await safeJson(res);
       } else if (res.ok && looksLikeSparsePdfImport(data)) {
         const firstMeetId = Number(data && data.meet && data.meet.id);
         const firstEventCount = getImportedMeetEventCount(data);
 
         try {
-          const browserAttempt = await importWithBrowserText();
-          if (browserAttempt.res.ok) {
-            const secondEventCount = getImportedMeetEventCount(browserAttempt.data);
+          stage = "uploading pdf to server";
+          showState(meetImportStatus, "Cross-checking with server-side PDF import...", "info");
+          const serverRes = await uploadFileMultipart("/api/meets/import", filePayload);
+          const serverData = await safeJson(serverRes);
+          if (serverRes.ok) {
+            const secondEventCount = getImportedMeetEventCount(serverData);
             const secondMeetId = Number(
-              browserAttempt.data && browserAttempt.data.meet && browserAttempt.data.meet.id,
+              serverData && serverData.meet && serverData.meet.id,
             );
 
             if (secondEventCount > firstEventCount) {
               await deleteImportedMeetForRetry(firstMeetId);
-              res = browserAttempt.res;
-              data = browserAttempt.data;
+              res = serverRes;
+              data = serverData;
             } else {
               await deleteImportedMeetForRetry(secondMeetId);
             }

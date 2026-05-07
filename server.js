@@ -2262,13 +2262,17 @@ function parseDescriptorDistanceAndStroke(descriptor) {
   };
 }
 
-function buildKnownMeetTemplateFromText(content, meetDate) {
+function buildKnownMeetTemplateFromText(content, meetDate, options = {}) {
   const text = String(content || "");
   const normalizedDate = normalizeDateOnly(meetDate) || normalizeDateOnly(new Date().toISOString().slice(0, 10));
   const detectedName = String(detectMeetNameFromText(text, { meet_date: normalizedDate }) || "");
-  const keyText = `${detectedName} ${text}`.toLowerCase();
+  const fileName = String(options && options.file_name ? options.file_name : "");
+  const keyText = `${detectedName} ${fileName} ${text}`.toLowerCase();
 
-  const isMayZing = /a[-\s]?may[-\s]?zing/.test(keyText) || /ssc\s+a[-\s]?may[-\s]?zing/.test(keyText);
+  const isMayZing =
+    /a[-\s]?may[-\s]?zing/.test(keyText) ||
+    /ssc\s+a[-\s]?may[-\s]?zing/.test(keyText) ||
+    /may\W*zing/.test(keyText);
   const isCondors = /condors/.test(keyText) && /may/.test(keyText) && /meter/.test(keyText);
 
   if (!isMayZing && !isCondors) {
@@ -2551,23 +2555,18 @@ function parseMeetFileContent(content, options = {}) {
       meet_date: detectedDate,
     });
 
-    const knownTemplate = buildKnownMeetTemplateFromText(text, detectedDate);
+    const knownTemplate = buildKnownMeetTemplateFromText(text, detectedDate, options);
     if (knownTemplate) {
       const knownCount = Array.isArray(knownTemplate.events)
         ? knownTemplate.events.length
         : 0;
-      const parsedCount = Array.isArray(inviteParsed.events)
-        ? inviteParsed.events.length
-        : 0;
-      if (!parsedCount || parsedCount < Math.max(10, Math.floor(knownCount * 0.5))) {
-        console.log(
-          "🔍 Using known meet template fallback:",
-          knownTemplate.meet_name,
-          "events:",
-          knownCount,
-        );
-        return knownTemplate;
-      }
+      console.log(
+        "🔍 Using known meet template:",
+        knownTemplate.meet_name,
+        "events:",
+        knownCount,
+      );
+      return knownTemplate;
     }
 
     if (inviteParsed.events.length) {
