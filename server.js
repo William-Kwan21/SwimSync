@@ -2628,6 +2628,7 @@ async function getMeetEligibilityForSwimmers(
 app.use(express.json({ limit: "100mb" }));
 app.use(express.urlencoded({ limit: "100mb", extended: true }));
 app.use(express.static(path.join(__dirname, "public"), { index: false }));
+app.use("/uploads/meets", express.static(uploadsDir));
 
 app.get("/", (_req, res) => {
   res.sendFile(path.join(__dirname, "public", "login.html"));

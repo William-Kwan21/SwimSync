@@ -283,9 +283,36 @@ async function downloadOriginalMeetFile(meetId, fileName) {
     throw new Error("Invalid meet id");
   }
 
+  const openStaticFallback = async (routeErrorMessage = "") => {
+    const detailRes = await apiFetch(`/api/meets/${parsedMeetId}`);
+    if (!detailRes.ok) {
+      const detailMessage = await readResponseMessage(detailRes);
+      throw new Error(
+        detailMessage || routeErrorMessage || `Download failed (${detailRes.status})`,
+      );
+    }
+
+    const detailData = await safeJson(detailRes);
+    const importName = String(
+      (detailData && detailData.meet && detailData.meet.import_filename) ||
+        fileName ||
+        `meet-${parsedMeetId}.pdf`,
+    ).trim();
+    const importExt = (importName.match(/\.[a-z0-9]+$/i) || [".pdf"])[0];
+    const staticUrl = `/uploads/meets/${parsedMeetId}${importExt}`;
+    const opened = window.open(staticUrl, "_blank", "noopener,noreferrer");
+    if (!opened) {
+      throw new Error("Popup blocked while opening original file");
+    }
+  };
+
   const response = await apiFetch(`/api/meets/${parsedMeetId}/original-file`);
   if (!response.ok) {
     const message = await readResponseMessage(response);
+    if (response.status === 404 && /route not found/i.test(message)) {
+      await openStaticFallback(message);
+      return;
+    }
     throw new Error(message || `Download failed (${response.status})`);
   }
 

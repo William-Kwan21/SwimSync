@@ -4,7 +4,7 @@
   "description": "SwimSync team management app",
   "main": "server.js",
   "scripts": {
-    "start": "pm2 restart swimsync || pm2 start server.js --name swimsync",
+    "start": "pm2 restart swimsync || pm2 start server.js --name swimsync || node server.js",
     "start:direct": "node server.js"
   },
   "dependencies": {
