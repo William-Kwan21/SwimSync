@@ -4368,22 +4368,31 @@ app.post(
 
       await connection.commit();
 
-      // Save the original file if it's a PDF
-      if (
-        payload &&
-        payload.file_buffer &&
-        payload.is_pdf &&
-        payload.file_name
-      ) {
+      // Save the original imported file when available so it can be reopened later.
+      if (payload && payload.file_name) {
         try {
-          const fileExtension = path.extname(payload.file_name) || ".pdf";
+          const preferredExt = path.extname(String(payload.file_name || "")).toLowerCase();
+          const fallbackExt = payload.is_pdf ? ".pdf" : ".txt";
+          const fileExtension = /^\.[a-z0-9]+$/i.test(preferredExt)
+            ? preferredExt
+            : fallbackExt;
+
+          const sourceBuffer =
+            payload.file_buffer && payload.file_buffer.length
+              ? payload.file_buffer
+              : Buffer.from(String(content || ""), "utf8");
+
+          if (!sourceBuffer.length) {
+            throw new Error("No file data available to save");
+          }
+
           const safeFileName = `${meetId}${fileExtension}`;
           const filePath = path.join(uploadsDir, safeFileName);
-          fs.writeFileSync(filePath, payload.file_buffer);
-          console.log(`✓ Saved PDF for meet ${meetId}:`, filePath);
+          fs.writeFileSync(filePath, sourceBuffer);
+          console.log(`Saved original import file for meet ${meetId}:`, filePath);
         } catch (error) {
           console.warn(
-            `Warning: Could not save PDF file for meet ${meetId}:`,
+            `Warning: Could not save original file for meet ${meetId}:`,
             error.message,
           );
         }
@@ -4726,6 +4735,14 @@ app.get("/api/meets/:id", authenticate, async (req, res) => {
             return res.status(404).json({ message: "Original file is not available on server" });
           }
           filePath = path.join(uploadsDir, candidates[0]);
+        }
+
+        const resolvedExt = path.extname(String(filePath || "")).toLowerCase();
+        if (resolvedExt === ".pdf") {
+          const safeName = importFilename.replace(/[\r\n"]/g, "");
+          res.setHeader("Content-Type", "application/pdf");
+          res.setHeader("Content-Disposition", `inline; filename="${safeName}"`);
+          return res.sendFile(filePath);
         }
 
         return res.download(filePath, importFilename);

@@ -292,8 +292,18 @@ async function downloadOriginalMeetFile(meetId, fileName) {
   const blob = await response.blob();
   const blobUrl = URL.createObjectURL(blob);
   const downloadName = String(fileName || `meet-${parsedMeetId}.pdf`).trim();
+  const isPdfFile =
+    /\.pdf$/i.test(downloadName) ||
+    String(blob.type || "").toLowerCase().includes("pdf");
 
   try {
+    if (isPdfFile) {
+      const opened = window.open(blobUrl, "_blank", "noopener,noreferrer");
+      if (opened) {
+        return;
+      }
+    }
+
     const link = document.createElement("a");
     link.href = blobUrl;
     link.download = downloadName;
@@ -301,7 +311,7 @@ async function downloadOriginalMeetFile(meetId, fileName) {
     link.click();
     link.remove();
   } finally {
-    setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
+    setTimeout(() => URL.revokeObjectURL(blobUrl), 60000);
   }
 }
 
