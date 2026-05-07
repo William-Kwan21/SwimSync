@@ -5370,64 +5370,18 @@ app.get("/api/meets/:id", authenticate, async (req, res) => {
       swimmerRows.map((row) => [Number(row.swimmer_id), row]),
     );
 
-    // Group events by session for easier lookup
-    const eventsBySession = new Map();
-    events.forEach((event) => {
-      // Extract session label from event_name or use parsed session_label if available
-      let sessionLabel = "";
-      const parsed = String(event.event_name || "").match(/^\[([^\]]+)\]/);
-      if (parsed) {
-        sessionLabel = parsed[1];
-      }
-
-      const key = `${sessionLabel}`;
-      if (!eventsBySession.has(key)) {
-        eventsBySession.set(key, []);
-      }
-      eventsBySession.get(key).push(event);
-    });
-
-    console.log(
-      "🔍 Events by session:",
-      Array.from(eventsBySession.entries()).map(([label, evts]) => ({
-        session_label: label,
-        event_count: evts.length,
-      })),
-    );
-
     for (const swimmerId of declarationSwimmerIds) {
       const swimmer = swimmerById.get(Number(swimmerId));
       if (!swimmer) continue;
 
       for (const day of returnedDays) {
-        // Check if swimmer is eligible for this session by checking events in the session
-        const sessionKey = String(day.session_label || "").trim();
-        const sessionEvents = eventsBySession.get(sessionKey) || [];
-
-        let allowed = false;
-        if (sessionEvents.length > 0) {
-          // Check if any event in this session is eligible for the swimmer
-          allowed = sessionEvents.some((event) => {
-            const effectiveGender =
-              event.gender || extractGenderFromText(event.event_name || "");
-            const effectiveAgeGroup =
-              event.age_group ||
-              extractAgeGroupFromText(event.event_name || "");
-
-            return (
-              genderMatches(effectiveGender, swimmer.gender) &&
-              ageMatches(effectiveAgeGroup, swimmer.date_of_birth, day.meet_day)
-            );
-          });
-        } else if (day.age_group || day.gender) {
-          // Fallback: if no events in session, check session constraints
-          allowed =
-            genderMatches(day.gender, swimmer.gender) &&
-            ageMatches(day.age_group, swimmer.date_of_birth, day.meet_day);
-        } else {
-          // No events and no session constraints = open to everyone
-          allowed = true;
-        }
+        // Declarations are for session availability, not event qualification.
+        // Only apply explicit session-level constraints when they exist.
+        const hasSessionConstraints = Boolean(day.age_group || day.gender);
+        const allowed = hasSessionConstraints
+          ? genderMatches(day.gender, swimmer.gender) &&
+            ageMatches(day.age_group, swimmer.date_of_birth, day.meet_day)
+          : true;
 
         declarationEligibility.push({
           swimmer_id: Number(swimmerId),
