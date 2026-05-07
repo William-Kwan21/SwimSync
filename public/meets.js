@@ -177,6 +177,38 @@ function compareSessionLabels(a, b) {
   return left[2].localeCompare(right[2]);
 }
 
+function normalizeSessionLabelForDisplay(value) {
+  const raw = String(value || "")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!raw) return "";
+
+  const parts = raw.split(" ");
+  const dayPart = String(parts[0] || "");
+  const periodPart = String(parts[1] || "");
+  const sessionNumberMatch = raw.match(/\bsession\s*(\d+)\b/i);
+
+  const titleCaseWord = (word) => {
+    const lower = String(word || "").toLowerCase();
+    if (!lower) return "";
+    return lower.charAt(0).toUpperCase() + lower.slice(1);
+  };
+
+  const normalizedDay = titleCaseWord(dayPart);
+  const normalizedPeriod = (() => {
+    const upper = String(periodPart || "").toUpperCase();
+    if (upper.startsWith("MID")) return "MID";
+    if (upper === "AM" || upper === "PM") return upper;
+    return titleCaseWord(periodPart);
+  })();
+
+  if (sessionNumberMatch) {
+    return `${normalizedDay} ${normalizedPeriod} Session ${sessionNumberMatch[1]}`.trim();
+  }
+
+  return `${normalizedDay} ${normalizedPeriod}`.trim();
+}
+
 function buildSessionRows(detail) {
   const meet = detail && detail.meet ? detail.meet : {};
   const baseDate = meet.start_date || meet.meet_date || null;
@@ -185,7 +217,9 @@ function buildSessionRows(detail) {
 
   const addRow = (row) => {
     const meetDay = String(row && row.meet_day ? row.meet_day : "").slice(0, 10);
-    const sessionLabel = String(row && row.session_label ? row.session_label : "").trim();
+    const sessionLabel = normalizeSessionLabelForDisplay(
+      row && row.session_label ? row.session_label : "",
+    );
     if (!meetDay || !sessionLabel) return;
     const key = `${meetDay}|${sessionLabel}`;
     if (seen.has(key)) return;
@@ -714,6 +748,15 @@ function extractAgeGroupFromEventName(eventName) {
   return "";
 }
 
+function formatGenderTag(gender) {
+  const raw = String(gender || "").trim().toLowerCase();
+  if (!raw) return "";
+  if (raw === "female") return "Girls";
+  if (raw === "male") return "Boys";
+  if (raw === "mixed") return "Mixed";
+  return raw.charAt(0).toUpperCase() + raw.slice(1);
+}
+
 function renderPublicEventsTable(detail) {
   if (!meetPublicEventsTbody) return;
 
@@ -766,7 +809,8 @@ function renderPublicEventsTable(detail) {
 
         const ageGroup =
           event.age_group || extractAgeGroupFromEventName(cleanEventName);
-        const tagBits = [ageGroup || ""].filter(Boolean);
+        const genderTag = formatGenderTag(event.gender);
+        const tagBits = [genderTag || "", ageGroup || ""].filter(Boolean);
 
         const metaBits = [
           event.distance_meters ? `${event.distance_meters}m` : "",
@@ -1054,15 +1098,28 @@ function renderCoachEntryTable(detail) {
               : "";
             const parsed = parseEventNameWithSession(event.event_name || "");
             const displayName = parsed.eventTitle || event.event_name;
+            const ageTag =
+              event.age_group || extractAgeGroupFromEventName(displayName || "");
+            const genderTag = formatGenderTag(event.gender);
+            const filterTags = [genderTag || "", ageTag || ""]
+              .filter(Boolean)
+              .map(
+                (tag) =>
+                  `<span class="event-standard-chip">${escHtml(tag)}</span>`,
+              )
+              .join("");
             // Determine best time for this swimmer/event
             const bestTimeText =
               getBestTimeForSwimmerAndEvent(detail, swimmerId, event) || "NT";
 
             return `
               <div class="entry-row" style="display:flex; align-items:center; gap:0.6rem; margin:0 0 0.45rem 0;">
-                <label style="display:flex; align-items:center; gap:0.5rem; margin:0;">
+                <label style="display:flex; align-items:flex-start; gap:0.5rem; margin:0;">
                   <input type="checkbox" data-entry-swimmer="${swimmerId}" data-entry-event="${event.id}" ${checked} />
-                  <span>${escHtml(displayName)}</span>
+                  <span>
+                    <span>${escHtml(displayName)}</span>
+                    ${filterTags ? `<span style="display:inline-flex; gap:0.35rem; margin-left:0.5rem; flex-wrap:wrap;">${filterTags}</span>` : ""}
+                  </span>
                 </label>
                 <div style="margin-left:auto; display:flex; gap:0.5rem; align-items:center;">
                   <button type="button" class="btn btn-link btn-time" data-time-display data-swimmer="${swimmerId}" data-event="${event.id}" style="color:#0b66ff; border:0; background:transparent; cursor:pointer; padding:0;">${escHtml(bestTimeText)}</button>

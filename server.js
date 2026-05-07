@@ -5191,8 +5191,8 @@ app.get("/api/meets/:id", authenticate, async (req, res) => {
       [meetId],
     );
 
-    // Fallback: if meet_days are missing or only one generic day, try to reconstruct
-    // session-level meet_days from event_name session prefixes like "[Friday PM] ..."
+    // Prefer event-derived session labels when available so declaration sessions
+    // match the exact sessions shown in the meet events UI.
     let returnedDays = Array.isArray(days) ? days : [];
     try {
       if (Array.isArray(events) && events.length) {
@@ -5202,46 +5202,52 @@ app.get("/api/meets/:id", authenticate, async (req, res) => {
           if (m && m[1]) sessionLabels.set(m[1].trim(), true);
         });
 
-        if (sessionLabels.size > returnedDays.length) {
-          const baseDate =
-            meetRows[0] && (meetRows[0].start_date || meetRows[0].meet_date)
-              ? meetRows[0].start_date || meetRows[0].meet_date
-              : null;
-          const reconstructed = [];
-          for (const label of sessionLabels.keys()) {
-            // Expect labels like "Friday PM" or "Saturday MID"
-            const parts = String(label).split(/\s+/).filter(Boolean);
-            const dayName = parts.length ? parts[0] : null;
-            const periodRaw = parts.length > 1 ? parts.slice(1).join(" ") : "";
-            if (!dayName) continue;
-            const normalizedPeriod = normalizeInviteSessionPeriod(periodRaw);
-            const meet_day = baseDate
-              ? addDaysToDateOnly(
-                  baseDate,
-                  getDayOffsetFromDate(baseDate, dayName),
-                )
-              : null;
-            if (!meet_day) continue;
-            reconstructed.push({
-              meet_day,
-              session_label: `${dayName} ${normalizedPeriod}`.trim(),
-              age_group: null,
-              gender: null,
-            });
-          }
-          if (reconstructed.length) {
-            returnedDays = normalizeMeetDayEntries(
-              reconstructed,
-              meetRows[0] && (meetRows[0].start_date || meetRows[0].meet_date),
-            );
-            console.log(
-              "🔍 Reconstructed meet_days from events:",
-              returnedDays.map((d) => ({
-                meet_day: d.meet_day,
-                session_label: d.session_label,
-              })),
-            );
-          }
+        const baseDate =
+          meetRows[0] && (meetRows[0].start_date || meetRows[0].meet_date)
+            ? meetRows[0].start_date || meetRows[0].meet_date
+            : null;
+        const reconstructed = [];
+        for (const label of sessionLabels.keys()) {
+          const parts = String(label).split(/\s+/).filter(Boolean);
+          const dayName = parts.length ? parts[0] : null;
+          if (!dayName) continue;
+          const meet_day = baseDate
+            ? addDaysToDateOnly(baseDate, getDayOffsetFromDate(baseDate, dayName))
+            : null;
+          if (!meet_day) continue;
+          reconstructed.push({
+            meet_day,
+            session_label: String(label).trim(),
+            age_group: null,
+            gender: null,
+          });
+        }
+
+        const normalizedReconstructed = reconstructed.length
+          ? normalizeMeetDayEntries(reconstructed, baseDate)
+          : [];
+        const currentKeys = new Set(
+          returnedDays.map((d) => `${d.meet_day}|${String(d.session_label || "").trim()}`),
+        );
+        const reconstructedKeys = new Set(
+          normalizedReconstructed.map(
+            (d) => `${d.meet_day}|${String(d.session_label || "").trim()}`,
+          ),
+        );
+        const hasLabelMismatch =
+          normalizedReconstructed.length > 0 &&
+          (normalizedReconstructed.length !== returnedDays.length ||
+            Array.from(reconstructedKeys).some((key) => !currentKeys.has(key)));
+
+        if (hasLabelMismatch) {
+          returnedDays = normalizedReconstructed;
+          console.log(
+            "🔍 Using event-derived meet_days:",
+            returnedDays.map((d) => ({
+              meet_day: d.meet_day,
+              session_label: d.session_label,
+            })),
+          );
         }
       }
     } catch (reconErr) {
@@ -5374,7 +5380,7 @@ app.get("/api/meets/:id", authenticate, async (req, res) => {
       const swimmer = swimmerById.get(Number(swimmerId));
       if (!swimmer) continue;
 
-      for (const day of days) {
+      for (const day of returnedDays) {
         // Check if swimmer is eligible for this session by checking events in the session
         const sessionKey = String(day.session_label || "").trim();
         const sessionEvents = eventsBySession.get(sessionKey) || [];
