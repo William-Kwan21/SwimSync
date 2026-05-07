@@ -1459,17 +1459,23 @@ function compactMeetTextForImport(rawText) {
 
   const headingRegex = /\b(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)\s+(AM|PM|MID(?:-?DAY)?|AFTERNOON|MORNING|SESSION)\b/i;
   const sessionSummaryRegex = /\bSession\s*\d+\s*:\s*(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)\b/i;
+  const sessionHeaderRegex = /^Session\s*\d+\b/i;
+  const datedSessionLineRegex = /^(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)\s+\d{1,2}\/\d{1,2}\/\d{2,4}\b.*\b(Warm\s*Up|Competition\s+Start|Start)\b/i;
   const tableHeaderRegex = /\bGirls\s+Event\s+Boys\b/i;
   const pairedRowRegex = /^\d{1,3}\s+.+\s+\d{1,3}$/i;
   const explicitDualRegex = /^event\s*#?\s*\d{1,3}\s+.+\s+event\s*#?\s*\d{1,3}$/i;
+  const mixedEventRowRegex = /^\d{1,3}\s+(girls?|boys?|mixed)?\s*(25|50|100|200|400|500|800|1000|1500)\b.*\b(freestyle|free|backstroke|back|breaststroke|breast|butterfly|fly|individual\s+medley|im|relay)\b/i;
 
   for (const line of lines) {
     if (
       headingRegex.test(line) ||
       sessionSummaryRegex.test(line) ||
+      sessionHeaderRegex.test(line) ||
+      datedSessionLineRegex.test(line) ||
       tableHeaderRegex.test(line) ||
       pairedRowRegex.test(line) ||
-      explicitDualRegex.test(line)
+      explicitDualRegex.test(line) ||
+      mixedEventRowRegex.test(line)
     ) {
       pushLine(line);
     }

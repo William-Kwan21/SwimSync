@@ -1146,6 +1146,24 @@ function normalizeInviteSessionPeriod(value) {
     .toUpperCase();
 }
 
+function inferInviteSessionPeriodFromText(value) {
+  const text = String(value || "");
+  const timeMatch = text.match(/\b(\d{1,2})(?::(\d{2}))?\s*(AM|PM)\b/i);
+  if (!timeMatch) {
+    return normalizeInviteSessionPeriod(value || "PM");
+  }
+
+  const hour = Number(timeMatch[1]);
+  const meridiem = String(timeMatch[3] || "").toUpperCase();
+  if (meridiem === "AM") {
+    return "AM";
+  }
+  if (hour <= 1 || hour === 12) {
+    return "MID";
+  }
+  return "PM";
+}
+
 function addDaysToDateOnly(value, days) {
   const base = normalizeDateOnly(value);
   if (!base) return null;
@@ -1397,22 +1415,29 @@ function extractInviteSessionDaysFromText(content, meetDate) {
     .replace(/\r/g, "\n");
   const matches = [];
   const seen = new Set();
+  const trimmedLines = text.split("\n").map((line) => String(line || "").replace(/\s+/g, " ").trim());
 
-  const addMatch = (index, dayName, sessionRaw) => {
+  const addMatch = (index, dayName, sessionRaw, sessionNumber = null) => {
     const normalizedSession = normalizeInviteSessionPeriod(sessionRaw || "PM");
     const sessionDate = meetDate
       ? addDaysToDateOnly(meetDate, getDayOffsetFromDate(meetDate, dayName))
       : null;
     if (!sessionDate) return;
 
-    const key = `${sessionDate}|${dayName}|${normalizedSession}`;
+    const sessionLabel = sessionNumber
+      ? `${dayName} ${normalizedSession} Session ${sessionNumber}`.trim()
+      : `${dayName} ${normalizedSession}`.trim();
+    const key = sessionNumber
+      ? `${sessionDate}|session:${sessionNumber}`
+      : `${sessionDate}|${sessionLabel}`;
     if (seen.has(key)) return;
     seen.add(key);
 
     matches.push({
       index,
       meet_day: sessionDate,
-      session_label: `${dayName} ${normalizedSession}`.trim(),
+      session_label: sessionLabel,
+      session_number: sessionNumber,
       age_group: null,
       gender: null,
     });
@@ -1429,6 +1454,34 @@ function extractInviteSessionDaysFromText(content, meetDate) {
     /\bSession\s*\d+\s*:\s*(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)\s*(AM|PM|MID(?:-?DAY)?|AFTERNOON|MORNING)?/gi;
   while ((match = summaryRegex.exec(text)) !== null) {
     addMatch(match.index, match[1], match[2] || "PM");
+  }
+
+  for (let lineIndex = 0; lineIndex < trimmedLines.length; lineIndex += 1) {
+    const line = trimmedLines[lineIndex];
+    const sessionHeaderMatch = line.match(/^Session\s*(\d+)\b/i);
+    if (!sessionHeaderMatch) {
+      continue;
+    }
+
+    const sessionNumber = Number(sessionHeaderMatch[1]);
+    let contextLine = line;
+    let dayName = null;
+
+    for (let offset = 0; offset <= 2; offset += 1) {
+      const candidate = trimmedLines[lineIndex + offset] || "";
+      const dayMatch = candidate.match(/\b(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)\b/i);
+      if (dayMatch) {
+        dayName = dayMatch[1];
+        contextLine = `${line} ${candidate}`.trim();
+        break;
+      }
+    }
+
+    if (!dayName) {
+      continue;
+    }
+
+    addMatch(lineIndex, dayName, inferInviteSessionPeriodFromText(contextLine), sessionNumber);
   }
 
   matches.sort((a, b) => a.index - b.index);
@@ -1650,6 +1703,7 @@ function parseInviteSessionEventsFromText(content, options = {}) {
 
   // Now split the text into blocks using these 7 session markers
   const sessionMarkers = [];
+  const explicitSessionMarkers = [];
   const headingRegex =
     /\b(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)\s+(AM|PM|MID(?:[\s-]?DAY)?|AFTERNOON|MORNING|SESSION)(?:\s+Session)?\b/gi;
   let match;
@@ -1665,20 +1719,39 @@ function parseInviteSessionEventsFromText(content, options = {}) {
     });
   }
 
+  const explicitSessionRegex = /^Session\s*(\d+)\b.*$/gim;
+  while ((match = explicitSessionRegex.exec(text)) !== null) {
+    explicitSessionMarkers.push({
+      index: match.index,
+      key: `session:${match[1]}`,
+      match: match[0],
+      session_number: Number(match[1]),
+    });
+  }
+
+  const orderedMarkers = [...sessionMarkers, ...explicitSessionMarkers].sort(
+    (a, b) => a.index - b.index,
+  );
+
   console.log("🔍 Found", sessionMarkers.length, "session markers in text");
+  console.log(
+    "🔍 Found",
+    explicitSessionMarkers.length,
+    "explicit session-number markers in text",
+  );
 
   // For each session from allSessions, extract events from nearby text
   allSessions.forEach((session) => {
     const sessionLabel = session.session_label;
-    // Only exact-match on session label — day-only fallback causes multiple sessions
-    // (e.g. "Saturday AM" and "Saturday PM") to collide on the same marker.
-    const matchingMarker = sessionMarkers.find(
-      (m) => m.key.toLowerCase() === sessionLabel.toLowerCase(),
-    );
+    const sessionNumber = Number(session.session_number);
+    const matchingMarker = Number.isFinite(sessionNumber)
+      ? explicitSessionMarkers.find((m) => m.session_number === sessionNumber) ||
+        sessionMarkers.find((m) => m.key.toLowerCase() === sessionLabel.toLowerCase())
+      : sessionMarkers.find((m) => m.key.toLowerCase() === sessionLabel.toLowerCase());
 
     if (matchingMarker) {
       const blockStart = matchingMarker.index + matchingMarker.match.length;
-      const nextMarker = sessionMarkers.find(
+      const nextMarker = orderedMarkers.find(
         (m) => m.index > matchingMarker.index,
       );
       const blockEnd = nextMarker ? nextMarker.index : text.length;
