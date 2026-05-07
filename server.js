@@ -1013,6 +1013,41 @@ function extractEventNumberFromText(text) {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
 }
 
+function normalizeAgeGroupLabel(value) {
+  const raw = String(value || "")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!raw) return null;
+
+  const plusMatch = raw.match(/^(\d{1,2})\s*\+$/);
+  if (plusMatch) {
+    return `${Number(plusMatch[1])} & Over`;
+  }
+
+  const rangeMatch = raw.match(/^(\d{1,2})\s*(?:-|to|\/)\s*(\d{1,2})$/i);
+  if (rangeMatch) {
+    const left = Number(rangeMatch[1]);
+    const right = Number(rangeMatch[2]);
+    return `${Math.min(left, right)}-${Math.max(left, right)}`;
+  }
+
+  const underMatch = raw.match(/^(\d{1,2})\s*(?:&|and)?\s*(?:under|u)$/i);
+  if (underMatch) {
+    return `${Number(underMatch[1])} & Under`;
+  }
+
+  const overMatch = raw.match(/^(\d{1,2})\s*(?:&|and)?\s*(?:over|o)$/i);
+  if (overMatch) {
+    return `${Number(overMatch[1])} & Over`;
+  }
+
+  if (/^open$/i.test(raw)) return "Open";
+  if (/^senior$/i.test(raw)) return "Senior";
+  if (/^junior$/i.test(raw)) return "Junior";
+
+  return raw;
+}
+
 function extractAgeGroupFromText(text) {
   const raw = String(text || "")
     .replace(/\s+/g, " ")
@@ -1020,9 +1055,10 @@ function extractAgeGroupFromText(text) {
   if (!raw) return null;
 
   const patterns = [
-    /\b(\d{1,2}\s*(?:-|to|\/|\s)\s*\d{1,2})\b/i, // "13-14", "13 - 14", "13 to 14", "13 14"
+    /\b(\d{1,2}\s*(?:-|to|\/)\s*\d{1,2})\b/i, // "13-14", "13 - 14", "13 to 14"
     /\b(\d{1,2}\s*(?:&|and)\s*under)\b/i, // "12 & Under", "12 & under"
     /\b(\d{1,2}\s*(?:&|and)\s*over)\b/i, // "13 & Over", "13 & over"
+    /\b(\d{1,2}\+)\b/i, // "15+"
     /\b(\d{1,2}\s*U(?:nder)?)\b/i, // "12U", "12Under"
     /\b(open|senior|junior)\b/i, // "Open", "Senior", "Junior"
   ];
@@ -1030,7 +1066,7 @@ function extractAgeGroupFromText(text) {
   for (const pattern of patterns) {
     const match = raw.match(pattern);
     if (match && match[1]) {
-      return String(match[1]).replace(/\s+/g, " ").trim();
+      return normalizeAgeGroupLabel(match[1]);
     }
   }
 
@@ -2501,6 +2537,69 @@ function buildKnownMeetTemplateFromText(content, meetDate, options = {}) {
   };
 }
 
+function detectKnownMeetKey(meetName, fileName, text = "") {
+  const keyText = `${String(meetName || "")} ${String(fileName || "")} ${String(text || "")}`.toLowerCase();
+  if (
+    /a[-\s]?may[-\s]?zing/.test(keyText) ||
+    /ssc\s+a[-\s]?may[-\s]?zing/.test(keyText) ||
+    /may\W*zing/.test(keyText)
+  ) {
+    return "mayzing";
+  }
+  if (/condors/.test(keyText) && /may/.test(keyText) && /meter/.test(keyText)) {
+    return "condors";
+  }
+  return "";
+}
+
+function inferKnownMeetSessionFromEventNumber(eventNumber, meetName, meetDate, options = {}) {
+  const parsedEventNumber = Number(eventNumber);
+  if (!Number.isInteger(parsedEventNumber) || parsedEventNumber <= 0) {
+    return null;
+  }
+
+  const knownMeetKey = detectKnownMeetKey(
+    meetName,
+    options && options.file_name ? options.file_name : "",
+    options && options.source_text ? options.source_text : "",
+  );
+  const normalizedDate = normalizeDateOnly(meetDate);
+  if (!knownMeetKey || !normalizedDate) {
+    return null;
+  }
+
+  const makeSession = (dayName, period, sessionNumber) => ({
+    meet_day: addDaysToDateOnly(
+      normalizedDate,
+      getDayOffsetFromDate(normalizedDate, dayName),
+    ),
+    session_label: `${dayName} ${period} Session ${sessionNumber}`,
+  });
+
+  if (knownMeetKey === "mayzing") {
+    const sessionNumber = Math.floor(parsedEventNumber / 100);
+    if (sessionNumber === 1) return makeSession("Saturday", "AM", 1);
+    if (sessionNumber === 2) return makeSession("Saturday", "MID", 2);
+    if (sessionNumber === 3) return makeSession("Saturday", "PM", 3);
+    if (sessionNumber === 4) return makeSession("Sunday", "AM", 4);
+    if (sessionNumber === 5) return makeSession("Sunday", "MID", 5);
+    if (sessionNumber === 6) return makeSession("Sunday", "PM", 6);
+    return null;
+  }
+
+  if (knownMeetKey === "condors") {
+    if (parsedEventNumber >= 1 && parsedEventNumber <= 10) return makeSession("Friday", "PM", 1);
+    if (parsedEventNumber >= 11 && parsedEventNumber <= 30) return makeSession("Saturday", "AM", 2);
+    if (parsedEventNumber >= 31 && parsedEventNumber <= 32) return makeSession("Saturday", "MID", 3);
+    if (parsedEventNumber >= 33 && parsedEventNumber <= 50) return makeSession("Saturday", "PM", 4);
+    if (parsedEventNumber >= 51 && parsedEventNumber <= 70) return makeSession("Sunday", "AM", 5);
+    if (parsedEventNumber >= 71 && parsedEventNumber <= 72) return makeSession("Sunday", "MID", 6);
+    if (parsedEventNumber >= 73 && parsedEventNumber <= 90) return makeSession("Sunday", "PM", 7);
+  }
+
+  return null;
+}
+
 function parseMeetFileContent(content, options = {}) {
   const text = String(content || "").trim();
   if (!text) {
@@ -2707,6 +2806,35 @@ function parseMeetFileContent(content, options = {}) {
         ? explicitEventNumber
         : inferredEventNumber;
 
+    const explicitSessionLabel = firstNonEmpty(
+      row,
+      ["session_label", "session", "session_name"],
+      "",
+    );
+    const inferredKnownSession = inferKnownMeetSessionFromEventNumber(
+      eventNumber,
+      meetName,
+      meetDate,
+      {
+        ...options,
+        source_text: text,
+      },
+    );
+    const eventSessionLabel = explicitSessionLabel || (inferredKnownSession && inferredKnownSession.session_label) || "";
+    const eventMeetDay = meetDay || (inferredKnownSession && inferredKnownSession.meet_day) || null;
+
+    if (eventMeetDay && eventSessionLabel) {
+      dayEntries.push({
+        meet_day: eventMeetDay,
+        session_label: eventSessionLabel,
+        age_group:
+          firstNonEmpty(row, ["session_age_group", "day_age_group"], "") ||
+          null,
+        gender:
+          firstNonEmpty(row, ["session_gender", "day_gender"], "") || null,
+      });
+    }
+
     const stroke =
       firstNonEmpty(row, ["stroke"], "") ||
       (() => {
@@ -2754,7 +2882,12 @@ function parseMeetFileContent(content, options = {}) {
     const selectedRaw = firstNonEmpty(row, ["is_selected", "selected"], "");
 
     events.push({
-      event_name: buildEventName(eventNumber, eventName),
+      event_name: eventSessionLabel
+        ? limitTextLength(
+            `[${eventSessionLabel}] ${buildEventName(eventNumber, eventName)}`,
+            500,
+          )
+        : buildEventName(eventNumber, eventName),
       stroke: stroke || null,
       distance_meters: Number.isFinite(distanceMeters) ? distanceMeters : null,
       course: course || "SCY",

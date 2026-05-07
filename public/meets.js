@@ -676,25 +676,39 @@ function parseEventNameWithSession(eventName) {
   };
 }
 
+function normalizeAgeGroupLabel(value) {
+  const raw = String(value || "").replace(/\s+/g, " ").trim();
+  if (!raw) return "";
+
+  const plusMatch = raw.match(/^(\d{1,2})\s*\+$/);
+  if (plusMatch) return `${Number(plusMatch[1])} & Over`;
+
+  const rangeMatch = raw.match(/^(\d{1,2})\s*(?:-|to|\/)\s*(\d{1,2})$/i);
+  if (rangeMatch) {
+    const left = Number(rangeMatch[1]);
+    const right = Number(rangeMatch[2]);
+    return `${Math.min(left, right)}-${Math.max(left, right)}`;
+  }
+
+  const underMatch = raw.match(/^(\d{1,2})\s*(?:&|and)?\s*(?:under|u)$/i);
+  if (underMatch) return `${Number(underMatch[1])} & Under`;
+
+  const overMatch = raw.match(/^(\d{1,2})\s*(?:&|and)?\s*(?:over|o)$/i);
+  if (overMatch) return `${Number(overMatch[1])} & Over`;
+
+  if (/^open$/i.test(raw)) return "Open";
+  return raw;
+}
+
 function extractAgeGroupFromEventName(eventName) {
   if (!eventName) return "";
 
-  // Format: "Gender AgeGroup Distance Stroke"
-  // Example: "Female 11-12 50m Freestyle"
-  const parts = String(eventName).trim().split(/\s+/);
-
-  // If we have at least 2 parts (gender + age group)
-  if (parts.length >= 2) {
-    // The second part should be the age group
-    const ageGroup = parts[1];
-
-    // Check if it looks like an age group (contains digits or "Open" or "&")
-    if (
-      ageGroup &&
-      (ageGroup.match(/\d/) || ageGroup === "Open" || ageGroup.includes("&"))
-    ) {
-      return ageGroup;
-    }
+  const raw = String(eventName).replace(/\s+/g, " ").trim();
+  const match = raw.match(
+    /\b(\d{1,2}\s*(?:-|to|\/)\s*\d{1,2}|\d{1,2}\s*(?:&|and)?\s*(?:under|over)|\d{1,2}\+|open)\b/i,
+  );
+  if (match && match[1]) {
+    return normalizeAgeGroupLabel(match[1]);
   }
 
   return "";
