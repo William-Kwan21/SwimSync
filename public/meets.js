@@ -807,8 +807,9 @@ function renderPublicEventsTable(detail) {
         const entryState = "OPEN";
         const entryClass = "event-entry-in";
 
-        const ageGroup =
-          event.age_group || extractAgeGroupFromEventName(cleanEventName);
+        const ageGroup = normalizeAgeGroupLabel(
+          event.age_group || extractAgeGroupFromEventName(cleanEventName),
+        );
         const genderTag = formatGenderTag(event.gender);
         const tagBits = [genderTag || "", ageGroup || ""].filter(Boolean);
 
@@ -1098,8 +1099,9 @@ function renderCoachEntryTable(detail) {
               : "";
             const parsed = parseEventNameWithSession(event.event_name || "");
             const displayName = parsed.eventTitle || event.event_name;
-            const ageTag =
-              event.age_group || extractAgeGroupFromEventName(displayName || "");
+            const ageTag = normalizeAgeGroupLabel(
+              event.age_group || extractAgeGroupFromEventName(displayName || ""),
+            );
             const genderTag = formatGenderTag(event.gender);
             const filterTags = [genderTag || "", ageTag || ""]
               .filter(Boolean)

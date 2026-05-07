@@ -5441,7 +5441,10 @@ app.get("/api/meets/:id", authenticate, async (req, res) => {
     return res.json({
       meet: meetRows[0],
       days: returnedDays,
-      events,
+      events: events.map((ev) => ({
+        ...ev,
+        age_group: normalizeAgeGroupLabel(ev.age_group) || ev.age_group,
+      })),
       swimmers: swimmerRows,
       best_times: bestTimesRows,
       eligibility: Array.from(eligibility.eligibilityBySwimmerId.values()),
